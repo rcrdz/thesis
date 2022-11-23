@@ -219,7 +219,7 @@ for (i in 1:dim(p_values_shapiro)[1]) {
   t <- shapiro.test(as.numeric(data.xts[,i]))
   p_values_shapiro[i,1] <- t$p.value
 }
-# none of the variables is Gaussian atm
+# none of the variables is Gaussian (atm)
 row.names(p_values_shapiro)[which(p_values_shapiro[,1]>0.05)]
 # variable with highest p-value and its histogram
 rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]
