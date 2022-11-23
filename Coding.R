@@ -12,38 +12,52 @@ library(feasts)
 source("GrangerTests.R")
 source("ConditionalGrangerCausality.R")
 
-# Import data
-data <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
-dim(data)
-head(data)
+
+###################
+### Import data ###
+###################
+data_raw <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
+dim(data_raw)
+head(data_raw)
 
 # Looking at variable names and rename wrongly named Date
-names(data)
-#names(data)[1] <- 'Date' # Not necessary anymore i guess..
+names(data_raw)
+#names(data_raw)[1] <- 'Date' # Not necessary anymore i guess..
 
 
 ##############################
 ### Converting to .ts-data ###
 ##############################
 # Converting Date from character representation to class 'Date'
-#data_conv <- data
+#data_conv <- data_raw
 #data_conv %<>%
 #  mutate(Date = as.Date(Date, format= "%d.%m.%y"))
 
 # Converting to .ts-data # yearly seasonality
 #DA_Price_DE.ts <- ts(data_conv$DA_Price_DE, start = c(as.numeric(format(data_conv$Date[1], "%Y")), as.numeric(format(data_conv$Date[1], "%j"))), frequency = 365)
-#plot(decompose(DA_Price_DE.ts))
+
 
 ###############################
 ### Converting to .xts-data ###
 ###############################
-data.xts <- xts(data[,-1], order.by = as.Date(data[,1], "%d.%m.%y"))
+data_raw.xts <- xts(data_raw[,-1], order.by = as.Date(data_raw[,1], "%d.%m.%y"))
+
+
+#####################
+### Cleaning data ###
+#####################
+# Remove Time-variables ('DayofWeek' etc.)
+data.xts <- data_raw.xts[,! names(data_raw.xts) %in% c("DayofWeek", "Is_Weekday", "Seasons", "Holiday", "Year")]
+# Remove 'ShareOf's'
+data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("shareOf", names(data.xts))])]
 
 
 ################
 ### Plotting ###
 ################
+# a few plots..
 # Plotting: https://rpubs.com/odenipinedo/visualizing-time-series-data-in-R
+# Example: DK_2_P_spread_to_DE
 plot(data.xts$DK_2_P_spread_to_DE, main = "DK_2_P_spread_to_DE")
 
 # Plot two charts on same graphical window
@@ -51,48 +65,49 @@ plot(data.xts$DK_2_P_spread_to_DE, main = "DK_2_P_spread_to_DE")
 #plot(data$lignite_shareOf_production, main = "lignite_shareOf_production")
 #plot(data$DA_Price_DE, main = "DA_Price_DE")
 
-# Plot two charts in same plot
-plot(data.xts$DA_Price_DE, main = "Lignite + DA_Price_DE")
-lines(data.xts$lignite_shareOf_production, col = "red")
+# Example: Plot two charts in same plot
+plot(data.xts$actual_load, main = "Actual load + Forecast load")
+lines(data.xts$forecast_load, col = "red")
 
-# Plot of forecasts wind solar, off and onshore
+# Example: Plot with Legend
 plot(data.xts[,4:6], main = "Forecast Solar, Wind On- and Offshore Generation", col = c("black", "tomato", "blue"))
 addLegend(legend.loc = "topleft",
           legend.names = c(names(data.xts)[4], names(data.xts)[5], names(data.xts)[6]),
           #col = c("black", "tomato", "blue"),
           lty=1, lwd=1)
 
-# Plot of Power productions
-plot(data.xts[,27:35], main = "Power production from different sources")
-
-# Plot of shares of Power productions
-plot(data.xts[,37:45], main = "Shares of Power production from different sources")
-
 # Netherlands export, import
 plot(data.xts[,60:61], main = "Netherlands export, import")
 addLegend(legend.loc = "topleft",
-          legend.names = c(names(data.xts)[60], names(data.xts)[61]),
+          legend.names = c(names(data.xts$Netherlands_export), names(data.xts$Netherlands_import)),
           lty=1, lwd=1)
 
+# Plot of Power productions
+plot(data.xts[,27:35], main = "Power production from different sources")
 
-###################
-### Exploration ###
-###################
+
+########################
+### Data Exploration ###
+########################
 # Variables with negative values?
-data_without_date <- data[ , !(names(data) %in% "Date")]
-vals_greater_zero <- data_without_date %>%
-  gather(var, val) %>%
-  group_by(var) %>%
-  summarise(greater_zero = all(val[!is.na(val)] >= 0))
+#data_without_date <- data[ , !(names(data) %in% "Date")]
+#vals_greater_zero <- data_without_date %>%
+#  gather(var, val) %>%
+#  group_by(var) %>%
+#  summarise(greater_zero = all(val[!is.na(val)] >= 0))
 # Number of variables with only positive values: 63
-sum(vals_greater_zero$greater_zero)
+#sum(vals_greater_zero$greater_zero)
 # # of variables with also negative values: 18
-dim(vals_greater_zero)[1]-sum(vals_greater_zero$greater_zero)
+#dim(vals_greater_zero)[1]-sum(vals_greater_zero$greater_zero)
 # Variables with also negative values:
-vals_greater_zero$var[vals_greater_zero$greater_zero == FALSE]
-# It is also way easier to get the non-negatives:
-non_negatives.xts = data.xts[,colSums(data.xts<0)==0]
+#vals_greater_zero$var[vals_greater_zero$greater_zero == FALSE]
 
+# It is also way easier to get the non-negatives than above
+non_negatives.xts = data.xts[,colSums(data.xts<0)==0]
+names(non_negatives.xts)
+# variables with also negative values
+negatives.xts <- data.xts[,! names(data.xts) %in% names(non_negatives.xts)]
+names(negatives.xts)
 
 # Which variables start later in time?
 # Example: physical_net_export
@@ -101,44 +116,44 @@ time_index <- min(which(var_bool == TRUE))
 plot(data.xts$physical_net_export)
 timepoint <- time(data.xts$physical_net_export)[time_index]
 addEventLines(events = xts(x = '', order.by = timepoint), lty = 2, col = 'tomato', lwd = 1.5)
+
 # List: When is first nonzero entry
-first_nonzero <- data.frame(matrix(ncol = 1, nrow = 81))
+first_nonzero <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
 colnames(first_nonzero) <- "First nonzero index"
 rownames(first_nonzero) <- colnames(data.xts)
 for (i in 1:dim(first_nonzero)[1]) {
   bool <- data.xts[,i] != 0
   first_nonzero[i,1] <- min(which(bool == TRUE))
 }
-# Number of TS which "start not at first date"
-sum(first_nonzero != 1) #15
+# Number of variables which "start not at first date"
+sum(first_nonzero != 1) #14
 # Names of variables which "start not at first date"
 rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1]
-# ´Holidays´ should not be listed.. (!)
 
 
 # Zero-inflated data
-zeros_count <- data.frame(matrix(ncol = 1, nrow = 81))
+zeros_count <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
 rownames(zeros_count) <- colnames(data.xts)
 colnames(zeros_count) <- "# of Zeros"
 for (i in 1:dim(zeros_count)[1]) {
   #zeros_count[1,i] <- sum(data.xts[,i]==0)
   zeros_count[i,1] <- sum(data.xts[first_nonzero[i,]:dim(data.xts)[1],i]==0)
 }
-# Zero-inflated variables:
+# Zero-inflated variables
 zero_infl_vars <- subset(zeros_count, `# of Zeros` != 0)
 rownames(zero_infl_vars)
-# Non-Zero-inflated variables:
+# Non-Zero-inflated variables
 non_zero_infl_vars <- subset(zeros_count, `# of Zeros` == 0)
 rownames(non_zero_infl_vars)
 
-# Histograms of zero-inflated variables
+# Histograms of zero-inflated variables (removed zeros before "start")
 for (i in 1:dim(zero_infl_vars)[1]) {
-  hist(data.xts[,rownames(zero_infl_vars)[i]], xlab = rownames(zero_infl_vars)[i], main = paste("Histogram of ", rownames(zero_infl_vars)[i]), probability = TRUE)
+  hist(data.xts[first_nonzero[rownames(zero_infl_vars)[i],]:dim(data.xts)[1], rownames(zero_infl_vars)[i]], xlab = rownames(zero_infl_vars)[i], main = paste("Histogram of ", rownames(zero_infl_vars)[i]), probability = TRUE)
 }
 
-# Histograms of "non-zero-inflated" variables
+# Histograms of "non-zero-inflated" variables (removed zeros before "start")
 for (i in 1:dim(non_zero_infl_vars)[1]) {
-  hist(data.xts[,rownames(non_zero_infl_vars)[i]], xlab = rownames(non_zero_infl_vars)[i], main = paste("Histogram of ", rownames(non_zero_infl_vars)[i]), probability = TRUE)
+  hist(data.xts[first_nonzero[rownames(non_zero_infl_vars)[i],]:dim(data.xts)[1], rownames(non_zero_infl_vars)[i]], xlab = rownames(non_zero_infl_vars)[i], main = paste("Histogram of ", rownames(non_zero_infl_vars)[i]), probability = TRUE)
 }
 
 # Which columns are zero-inflated? #Different approach than above
@@ -156,11 +171,12 @@ nl <- 2 # number of lags
 data_with_lags <- embed(as.matrix(data.xts), nl+1) #produce a matrix with M columns containing the original series and lagged versions of it
 names <- colnames(data.xts)
 ndfs <- paste(rep(names,nl), "[t-", rep(1:nl, each=ncol(data.xts)), "]", sep = "")
-colnames(data_with_lags)=c(names, ndfs)
+colnames(data_with_lags) <- c(names, ndfs)
 cov_matrix_with_lags <- cov(data_with_lags)
 corr_matrix_with_lags <- cov2cor(cov_matrix_with_lags) # Correlation matrix
 which(corr_matrix_with_lags > 0.9, arr.ind = T) # which entries are >0.7?
 #corr_matrix_with_lags[which(corr_matrix_with_lags <0.9)] <- 0
+# auxiliary matrix to get variables with highest correlation
 auxiliary_matrix1 <- corr_matrix_with_lags
 auxiliary_matrix1[which(auxiliary_matrix1 == 1)] <- 0
 s <- which(auxiliary_matrix1 == max(auxiliary_matrix1), arr.ind = TRUE) # index of maximal value in matrix
@@ -172,37 +188,19 @@ colnames(corr_matrix_with_lags)[s[2]] #NG_storage is highly correlated to its 1s
 corr_matrix_no_lags <- cor(data.xts)
 corr_matrix_no_lags[which(corr_matrix_no_lags == 1)] <- 0
 s2 <- which(corr_matrix_no_lags == max(corr_matrix_no_lags), arr.ind = TRUE)
-# find the 5 largest values
-x <- which(corr_matrix_no_lags >= sort(corr_matrix_no_lags, decreasing = T)[5], arr.ind = T)
-# determine the order of the 5 largest values in decreasing order
+# find the 10 largest values
+x <- which(corr_matrix_no_lags >= sort(corr_matrix_no_lags, decreasing = T)[10], arr.ind = T)
+# determine the order of the 10 largest values in decreasing order
 x.order <- order(corr_matrix_no_lags[x], decreasing = T)
 x[x.order, ]
-plot(data.xts$hardcoal_production, main = "hardcoal_production and hardcoal_shareOf_production") # example of 2 correlated time series
-lines(data.xts$hardcoal_shareOf_production, col = "red") # Plot of the highly correlated variables
-# It turns out that obviously the share of and the production itself correlate highly
-# -> one step would be to remove one of these and check again the correlations!
+# Plot the ones with highest correlation
+plot(data.xts$NG_CleanPrice, main = "NG_CleanPrice and NG_TTF") # example of 2 correlated time series
+lines(data.xts$NG_TTF, col = "red") # Plot of the highly correlated variables
+# It turns out that (obviously) NG_CleanPrice and NG_TTF is highly correlated
 
-
-# Eliminating of non-important data (Day of Week, shares of production, ...)
-# Remove DayofWeek etc.
-data_without_timevariables.xts <- data.xts[,! names(data.xts) %in% c("DayofWeek", "Is_Weekday", "Seasons", "Holiday", "Year")]
-# Remove shares of ...
-#data_clean.xts <- data_clean.xts[,-c(32:40)] #dim: 2481 x 67
-
-auxiliary_matrix3 <- cor(data_without_timevariables.xts)
-auxiliary_matrix3[which(auxiliary_matrix3 == 1)] <- 0
-s3 <- which(auxiliary_matrix3 == max(auxiliary_matrix3), arr.ind = TRUE)
-# find the 5 largest values
-x3 <- which(auxiliary_matrix3>=sort(auxiliary_matrix3, decreasing = T)[20], arr.ind = T)
-# determine the order of the 20 largest values in decreasing order
-x3.order <- order(auxiliary_matrix3[x3], decreasing = T)
-x3[x3.order, ]
-plot(data.xts$wind_onshore_production, main = "wind_onshore_production and Wind_Speed") # example of 2 correlated time series
-lines(data.xts$Wind_Speed, col = "red") # Plot of the highly correlated TS
-
-# Another two correlated time series.
-plot(data.xts$DA_Price_DE, main = "DA_Price_DE and NG_TTF") # example of 2 correlated time series
-lines(data.xts$NG_TTF, col = "red")
+# Plot of another two highly correlated time series (solar_production and GHI)
+plot(data.xts$solar_production, main = "Solar production and GHI")
+lines(data.xts$GHI, col = "red")
 
 
 # QQ-plots (Example: DA_Price_DE)
@@ -214,20 +212,21 @@ qqPlot(data.xts$DA_Price_DE)
 # Shapiro-Wilk-Test (Test for Normality)
 # H_0: Variable is normally distributed
 # p-value not >0.05 -> significantly different from normal distribution
-p_values_shapiro <- data.frame(matrix(ncol = 1, nrow = 81))
+p_values_shapiro <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
 colnames(p_values_shapiro) <- "p-values of Shapiro-Wilk-Test"
 rownames(p_values_shapiro) <- colnames(data.xts)
 for (i in 1:dim(p_values_shapiro)[1]) {
   t <- shapiro.test(as.numeric(data.xts[,i]))
   p_values_shapiro[i,1] <- t$p.value
 }
-# none of the variables is Gaussian atm:
+# none of the variables is Gaussian atm
 row.names(p_values_shapiro)[which(p_values_shapiro[,1]>0.05)]
-# highest p-value and histogram of its variable
+# variable with highest p-value and its histogram
 rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]
+hist(data.xts$Poland_export, xlab = "Poland_export", main = paste("Histogram of Poland_export"), probability = TRUE)
+# alternative: ks.test(as.numeric(data.xts[,76]), "pnorm") (Kolmogorov-Smirnov-Test)
 
-
-# Non-Zero TS Gaussian after applying log-transform?
+# Are the non-zero variables Gaussian after applying log-transform?
 p_values_shapiro_log <- data.frame(matrix(ncol = 1, nrow = dim(non_negatives.xts)[2]))
 colnames(p_values_shapiro_log) <- "p-values of Shapiro-Wilk-Test"
 rownames(p_values_shapiro_log) <- colnames(non_negatives.xts)
@@ -235,8 +234,10 @@ for (i in 1:dim(p_values_shapiro_log)[1]) {
   t <- shapiro.test(log(as.numeric(non_negatives.xts[,i])))
   p_values_shapiro_log[i,1] <- t$p.value
 }
+# changes not that much..
+row.names(p_values_shapiro_log)[which(p_values_shapiro_log[,1]>0.05)]
 
-
+# Standardizing data
 # histogram of non-standardized data (Example: Poland_export)
 hist(data.xts[,rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]], xlab = rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])], main = paste("Histogram of ", rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]), probability = TRUE)
 # histogram of standardized data (Example: Poland_export)
@@ -244,25 +245,24 @@ standardized <- scale(data.xts[,rownames(p_values_shapiro)[which.max(p_values_sh
 hist(standardized, xlab = rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])], main = paste("Histogram of ", rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]), probability = TRUE)
 qqnorm(standardized, main=colnames(data.xts[,rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]]))
 qqline(rnorm(dim(data.xts)[1]))
-# alternative: ks.test(as.numeric(data.xts[,76]), "pnorm") (Kolmogorov-Smirnov-Test)
 
-
-# Decomposition # frequency = 365 means: 365 obs until season repeats (yearly seasonality)
+# Decomposition 
+# frequency = 365 means: 365 obs. until season repeats (yearly seasonality)
 # Example: forecast_residual_load
-o <- decompose(ts(data.xts$forecast_residual_load, frequency = 365))
-plot(o)
+decomp_actual_load <- decompose(ts(data.xts$actual_load, frequency = 365))
+plot(decomp_actual_load)
 # Seasonally Adjusting
-actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365) - o$seasonal
+actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365) - decomp_actual_load$seasonal
 plot(actual_load_SeasonAdj)
 
 
-##########################
-### Stationarity tests ###
-##########################
+####################
+### Stationarity ###
+####################
 
 # Checking Stationarity. Example: "DA_Price_DE"
-plot.new()
-frame()
+#plot.new()
+#frame()
 #par(mfcol=c(2,2))
 # the stationary signal and ACF
 plot(data.xts$DA_Price_DE,
@@ -272,6 +272,7 @@ plot(data.xts$DA_Price_DE,
      main = "DA_Price_DE")
 acf(data.xts$DA_Price_DE,lag.max = length(data.xts$DA_Price_DE),
     xlab = "lag #", ylab = 'ACF', main=' ')
+
 # Ljung-Box test for independence
 # H_0: Independence in a given time series 
 # (a non-stationary signal will have a low p-value)
@@ -285,38 +286,39 @@ for (i in 1:dim(data.xts)[2]) {
 }
 
 
+# Tests
 # https://stats.stackexchange.com/questions/88407/adf-test-pp-test-kpss-test-which-test-to-prefer
 # Unit root tests:
 # H_0: Unit root
 # H_1: Process has root outside the unit circle, which is usually equivalent to stationarity or trend stationarity
 # adf.test and pp.test correct for lags (compared to df-test)
-test <- data.xts$DA_Price_DE
-adf.test(test)
-pp.test(test)
+# Example: DA_Price_DE
+adf.test(data.xts$DA_Price_DE)
+pp.test(data.xts$DA_Price_DE)
 
 # stationarity test:
 # H_0: (Trend) Stationarity
 # H_1: There is a unit root.
 # kpss.test: non-parametric test
-kpss.test(test)
+kpss.test(data.xts$DA_Price_DE)
 
 # How unit-root test and stationarity-test complement each other:
 # https://stats.stackexchange.com/questions/30569/what-is-the-difference-between-a-stationary-test-and-a-unit-root-test/235916#235916(I
 
 # Phillips-Perron Test for Unit Roots
 # H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
-pp_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data_without_timevariables.xts))))
+pp_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
 colnames(pp_stationary) <- "Stationary?"
-rownames(pp_stationary) <- colnames(data_without_timevariables.xts)
+rownames(pp_stationary) <- colnames(data.xts)
 for (i in 1:dim(pp_stationary)[1]) {
-  pp <- pp.test(data_without_timevariables.xts[,i])
-  if (pp$p.value < 0.05) {
+  pp <- pp.test(data.xts[,i])
+  if (pp$p.value < 0.05) { # SIGNIFICANCE LEVEL
     pp_stationary[i,1] <- TRUE
   } else {
     pp_stationary[i,1] <- FALSE
   }
 }
-# non-stationry ts according to PP:
+# non-stationary ts according to PP (significance level .05)
 rownames(pp_stationary)[which(pp_stationary==FALSE)]
 
 
@@ -335,24 +337,25 @@ rownames(pp_stationary)[which(pp_stationary==FALSE)]
 
 # ADF test
 # H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
-adf_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data_without_timevariables.xts))))
+adf_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
 colnames(adf_stationary) <- "Stationary?"
-rownames(adf_stationary) <- colnames(data_without_timevariables.xts)
+rownames(adf_stationary) <- colnames(data.xts)
 for (i in 1:dim(adf_stationary)[1]) {
-  adf <- adf.test(data_without_timevariables.xts[,i])
-  if (adf$p.value < 0.01) {
+  adf <- adf.test(data.xts[,i])
+  if (adf$p.value < 0.05) { # SIGNIFICANCE LEVEL
     adf_stationary[i,1] <- TRUE
   } else {
     adf_stationary[i,1] <- FALSE
   }
 }
-# non-stationry ts according to ADF:
+# non-stationry ts according to ADF 
 rownames(adf_stationary)[which(adf_stationary==FALSE)]
 
 
 # Results are different for each of the tests when compared
-# Is it because of structural break??
+# Is it because of structural break?
 # Zivot and Andrews Unit Root Test # because of structural break
+library(urca)
 za.gnp <- ur.za(data.xts$DA_Price_DE)
 summary(za.gnp)
 
@@ -377,6 +380,7 @@ breakpoints
 breaktime <- time(DA_Price_DE)[breakpoints$breakpoints]
 plot(DA_Price_DE)
 addEventLines(events = xts(x = '', order.by = breaktime), lty = 2, col = 'red', lwd = 1.5)
+
 # Test for stationarity in "DA_Price_DE" truncated @ 2020-10-14 
 DA_Price_DE_clean <- DA_Price_DE["/2020-10-14"]
 adf.test(DA_Price_DE_clean)
@@ -449,7 +453,6 @@ acf2(diffTS) # with PACF's
 #####################
 ### Cointegration ###
 #####################
-library(urca)
 # Johansen cointegration test:
 # H_1 for the eigenvalue test: here are r+1 cointegration relations
 # If test fails to reject H_1 for the first time when r=1, then you have 1 cointegration relationship
@@ -574,3 +577,7 @@ VECM_tsDyn <- VECM(data = data.xts[,1:3], lag=3, r=2,
 
 
 vec2var_ca.jo <- vec2var(vecm.model, r=2)
+
+
+
+
