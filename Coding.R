@@ -308,18 +308,14 @@ kpss.test(data.xts$DA_Price_DE)
 # Phillips-Perron Test for Unit Roots
 # H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
 pp_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(pp_stationary) <- "Stationary?"
+colnames(pp_stationary) <- "p-value"
 rownames(pp_stationary) <- colnames(data.xts)
 for (i in 1:dim(pp_stationary)[1]) {
   pp <- pp.test(data.xts[,i])
-  if (pp$p.value < 0.05) { # SIGNIFICANCE LEVEL
-    pp_stationary[i,1] <- TRUE
-  } else {
-    pp_stationary[i,1] <- FALSE
-  }
+  pp_stationary[i,1] <- pp$p.value
 }
-# non-stationary ts according to PP (significance level .05)
-rownames(pp_stationary)[which(pp_stationary==FALSE)]
+# non-stationary ts according to PP (SIGNIFICANCE LEVEL 0.05)
+rownames(pp_stationary)[which(pp_stationary>=0.05)]
 
 
 # Phillips-Perron Test when variables with zeros removed and log applied
@@ -338,18 +334,14 @@ rownames(pp_stationary)[which(pp_stationary==FALSE)]
 # ADF test
 # H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
 adf_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(adf_stationary) <- "Stationary?"
+colnames(adf_stationary) <- "p-value"
 rownames(adf_stationary) <- colnames(data.xts)
 for (i in 1:dim(adf_stationary)[1]) {
   adf <- adf.test(data.xts[,i])
-  if (adf$p.value < 0.05) { # SIGNIFICANCE LEVEL
-    adf_stationary[i,1] <- TRUE
-  } else {
-    adf_stationary[i,1] <- FALSE
-  }
+  adf_stationary[i,1] <- adf$p.value
 }
-# non-stationry ts according to ADF 
-rownames(adf_stationary)[which(adf_stationary==FALSE)]
+# non-stationry ts according to ADF (SIGNIFICANCE LEVEL 0.05)
+rownames(adf_stationary)[which(adf_stationary>=0.05)]
 
 
 # Results are different for each of the tests when compared
