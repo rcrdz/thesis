@@ -353,12 +353,16 @@ rownames(adf_stationary)[which(adf_stationary==FALSE)]
 
 
 # Results are different for each of the tests when compared
+# Which ones are different?
+rownames(adf_stationary)[which(adf_stationary != pp_stationary)]
 # Is it because of structural break?
 # Zivot and Andrews Unit Root Test # because of structural break
 library(urca)
 za.gnp <- ur.za(data.xts$DA_Price_DE)
 summary(za.gnp)
 
+
+# Inspecting the variables where adf.test and pp.test differ in their outcomes
 # Luxembourg_export has a structural break @ 2017-06-28
 # This is, because data starts @ 2017-06-28
 Luxembourg_export <- data.xts$Luxembourg_export
@@ -368,29 +372,25 @@ adf.test(Luxembourg_export_clean)
 pp.test(Luxembourg_export_clean)
 # Now the tests show the same result :)
 
-
 # Can we test for structural breaks in general? We can!
 library(strucchange)
+# DA_Price_DE
 DA_Price_DE <- data.xts$DA_Price_DE
 plot(DA_Price_DE)
 time <- c(1:length(DA_Price_DE))
 breakpoints <- breakpoints(DA_Price_DE ~ time, h = 372, breaks = 1)
-# We limit the breakpoints to 1, is that okay?
+# We limit the breakpoints to 1, is that reasonable?
 breakpoints
 breaktime <- time(DA_Price_DE)[breakpoints$breakpoints]
 plot(DA_Price_DE)
 addEventLines(events = xts(x = '', order.by = breaktime), lty = 2, col = 'red', lwd = 1.5)
-
 # Test for stationarity in "DA_Price_DE" truncated @ 2020-10-14 
 DA_Price_DE_clean <- DA_Price_DE["/2020-10-14"]
 adf.test(DA_Price_DE_clean)
 pp.test(DA_Price_DE_clean)
 # Now the tests show the same result :)
-# How can we overcome structural breaks? Logarithm? 
-# But: We get NaNs for negative values in the data :(
 
-
-# Whats the problem with NG_storage (natural gas storage level)?
+# NG_storage
 NG_storage <- data.xts$NG_storage
 plot(NG_storage)
 time <- c(1:length(NG_storage))
@@ -399,14 +399,12 @@ breaktime2 <- time(NG_storage)[breakpoints_storage$breakpoints]
 plot(NG_storage)
 addEventLines(events = xts(x = '', order.by = breaktime2), lty = 2, col = 'red', lwd = 1.5)
 
-
-# Problem with GHI (global irradiance factor)?
+# GHI
 GHI <- data.xts$GHI
 plot(GHI)
-# Is this periodicity problem??
+# Is periodicity the problem?
 
-
-# Problem with hydropower_production?
+# hydropower_production
 hydropower_production <- data.xts$hydropower_production
 plot(hydropower_production)
 time <- c(1:length(hydropower_production))
@@ -415,38 +413,38 @@ breaktime3 <- time(hydropower_production)[breakpoints_hydropower_production$brea
 plot(hydropower_production)
 addEventLines(events = xts(x = '', order.by = breaktime3), lty = 2, col = 'red', lwd = 1.5)
 
-
-# Problem with solar_production?
+# solar_production
 solar_production <- data.xts$solar_production
 plot(solar_production)
 
-
-# Problem with Switzerland_P_spread_to_DE
+# Switzerland_P_spread_to_DE
 Switzerland_P_spread_to_DE <- data.xts$Switzerland_P_spread_to_DE
 plot(Switzerland_P_spread_to_DE)
+
+# How can we overcome structural breaks? 
+# Logarithm? 
+# But: Problem with negative and zeros as argument of log
 
 
 #######################
 ### Differentiation ###
 #######################
 
-# Numbers of differentiations necessary for stationarity
-no_diffs <- ndiffs(data.xts$DA_Price_DE)
-
-# For entire data.xts (PP Test)
-no_diffs_all <- data.frame(matrix(ncol = 1, nrow = 81))
-colnames(no_diffs_all) <- "# of Diffs"
-rownames(no_diffs_all) <- colnames(data.xts)
-for (i in 1:dim(no_diffs_all)[1]) {
-  no_diffs_all[i,1] <- ndiffs(data.xts[,i], test = "pp")
+# Numbers of diff's necessary for stationarity (for entire dataset)
+# (PP Test)
+no_diffs <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
+colnames(no_diffs) <- "# of Diffs"
+rownames(no_diffs) <- colnames(data.xts)
+for (i in 1:dim(no_diffs)[1]) {
+  no_diffs[i,1] <- ndiffs(data.xts[,i], test = "pp")
 }
 
-# Differentiate
-diffTS <- diff(data.xts$DA_Price_DE, differences = no_diffs)
-diffTS <- as.numeric((diffTS)[!is.na(diffTS)])
+# Differentiation
+NG_TTF_diff <- diff(data.xts$NG_TTF, no_diffs["NG_TTF",])
+NG_TTF_diff <- as.numeric((NG_TTF_diff)[!is.na(NG_TTF_diff)])
 
-acf(diffTS, lag.max = 50, xlab = "lag #", ylab = 'ACF', main=' ')
-acf2(diffTS) # with PACF's
+#acf(NG_TTF_diff, lag.max = 50, xlab = "lag #", ylab = 'ACF', main=' ')
+acf2(NG_TTF_diff, max.lag = 20) # with PACF's
 # Plot somehow indicates stationarity
 
 
