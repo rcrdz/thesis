@@ -516,12 +516,12 @@ library(strucchange)
 ### log-scale??? ###
 
 # optimal lag order of the unrestricted VAR
-opt_lag <- VARselect(data_without_timevariables.xts, lag.max = 10, type = "const") # Akaike: 8
-opt_lag$selection # AIC says 3
+opt_lag <- VARselect(data.xts, lag.max = 10, type = "const") # Akaike: 8
+opt_lag$selection 
 
 # different function (don't know the exact difference but leads to different results...)
 # lag length + rank
-rk_sel <- lags.select(data_without_timevariables.xts)
+rk_sel <- lags.select(data.xts)
 summary(rk_sel)
 
 # p-values for PP-test (original data and after 1st difference)
