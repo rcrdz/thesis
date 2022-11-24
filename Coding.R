@@ -515,39 +515,55 @@ library(strucchange)
 ### log-scale??? ###
 
 # optimal lag order of the unrestricted VAR
-opt_lag <- VARselect(data.xts, lag.max = 10, type = "const") # Akaike: 8
+opt_lag <- VARselect(data.xts, lag.max = 10, type = "const")
 opt_lag$selection 
 
-# different function (don't know the exact difference but leads to different results...)
+# different function (don't know the exact difference but leads in general to different results...)
 # lag length + rank
 rk_sel <- lags.select(data.xts)
 summary(rk_sel)
 
 # p-values for PP-test (original data and after 1st difference)
-p_values_pp <- data.frame(matrix(ncol = 2, nrow = length(colnames(data_without_timevariables.xts))))
+p_values_pp <- data.frame(matrix(ncol = 2, nrow = dim(data.xts)[2]))
 colnames(p_values_pp) <- c("p-value (original data)", "p-value (1st difference)")
-rownames(p_values_pp) <- colnames(data_without_timevariables.xts)
+rownames(p_values_pp) <- colnames(data.xts)
 for (i in 1:dim(p_values_pp)[1]) {
-  pp <- pp.test(data_without_timevariables.xts[,i])
+  pp <- pp.test(data.xts[,i])
   p_values_pp[i,1] <- pp$p.value
   # removing first value to get no NA's
-  pp2 <- pp.test(diff(data_without_timevariables.xts[,i], differences = 1)[-1])
+  pp2 <- pp.test(diff(data.xts[,i], differences = 1)[-1])
   p_values_pp[i,2] <- pp2$p.value
 }
+# variables with p-value > 0.05 without differentiation (stationary)
+rownames(p_values_pp[which(p_values_pp$`p-value (original data)`>0.05),])
+# variables with p-value > 0.05 after 1st difference
+rownames(p_values_pp[which(p_values_pp$`p-value (1st difference)`>0.05),])
+
 
 # p-values for KPSS-test (original data and after 1st difference)
 # H_0: time series is stationary
-# p-value < 0.05 indicates rejection of H_0 
-p_values_kpss <- data.frame(matrix(ncol = 2, nrow = length(colnames(data_without_timevariables.xts))))
-colnames(p_values_kpss) <- c("p-value (original data)", "p-value (1st difference)")
-rownames(p_values_kpss) <- colnames(data_without_timevariables.xts)
+# p-value < 0.05 indicates non-stationarity
+p_values_kpss <- data.frame(matrix(ncol = 3, nrow = dim(data.xts)[2]))
+colnames(p_values_kpss) <- c("p-value (original data)", "p-value (1st difference)", "p-value (2nd difference)")
+rownames(p_values_kpss) <- colnames(data.xts)
 for (i in 1:dim(p_values_kpss)[1]) {
-  kpss <- kpss.test(data_without_timevariables.xts[,i])
+  kpss <- kpss.test(data.xts[,i])
   p_values_kpss[i,1] <- kpss$p.value
   # removing first value to get no NA's
-  kpss2 <- kpss.test(diff(data_without_timevariables.xts[,i], differences = 1)[-1])
+  kpss2 <- kpss.test(diff(data.xts[,i], differences = 1)[-1])
   p_values_kpss[i,2] <- kpss2$p.value
+  # removing second value to get no NA's
+  kpss3 <- kpss.test(diff(data.xts[,i], differences = 2)[-c(1, 2)])
+  p_values_kpss[i,3] <- kpss3$p.value
 }
+# variables with p-value < 0.05 without differentiation (stationary)
+rownames(p_values_kpss[which(p_values_kpss$`p-value (original data)`<0.05),])
+# variables with p-value < 0.05 after 1st difference
+rownames(p_values_kpss[which(p_values_kpss$`p-value (1st difference)`<0.05),])
+# after 1st difference there are still nonstationary time series (regarding to KPSS)
+# variables with p-value < 0.05 after 2nd difference
+rownames(p_values_kpss[which(p_values_kpss$`p-value (2nd difference)`<0.05),])
+# None.
 
 
 # cointegration test
