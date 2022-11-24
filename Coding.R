@@ -8,6 +8,9 @@ library(astsa)
 library(tidyverse)
 library(car)
 library(feasts)
+library(tsDyn)
+library(vars)
+library(strucchange)
 
 source("GrangerTests.R")
 source("ConditionalGrangerCausality.R")
@@ -457,19 +460,13 @@ acf2(NG_TTF_diff, max.lag = 20) # with PACF's
 #cointegration <- ca.jo(data.xts, type = "eigen", ecdet = "const", spec = "transitory", K = 2, dumvar = NULL)
 # Not possible: Matrix not invertible, since linearly dependent columns (i.e. stronlgy correlated variables)
 
-# cointegration of exports
-cointegration <- ca.jo(data.xts[,c("Netherlands_export", "Switzerland_export", "Denmark_export", 
-                                   "Czech_Republic_export", "Luxembourg_export", "Sweden_export", 
-                                   "Austria_export", "France_export", "Poland_export", "Norway_export", "Belgium_export")], 
-                       type = "trace", ecdet = "const", spec = "transitory", K = 3, dumvar = NULL)
+# cointegration of exports (trace test)
+cointegration <- ca.jo(data.xts, type = "trace", ecdet = "const", spec = "transitory", K = 3, dumvar = NULL)
 #summary(cointegration)
 # Results:
 cbind(cointegration@teststat, cointegration@cval)
 
-#cointegrated = cointegration@V["constant",1] + cointegration@V[1,1]*data.xts[,1] + cointegration@V[2,1]*data.xts[,2] + cointegration@V[3,1]*data.xts[,3]+cointegration@V[4,1]*data.xts[,4]+cointegration@V[5,1]*data.xts[,5]+cointegration@V[6,1]*data.xts[,6]+
-#  cointegration@V[7,1]*data.xts[,7]+cointegration@V[8,1]*data.xts[,8]+cointegration@V[9,1]*data.xts[,9]+cointegration@V[10,1]*data.xts[,10]
-#plot(cointegrated, type="l")
-#adf.test(s)
+
 
 
 
@@ -508,15 +505,13 @@ library(NlinTS)
 ######################
 #### Energy paper ####
 ######################
-library(tsDyn)
-library(vars)
-library(strucchange)
 
 ### log-scale??? ###
 
 # optimal lag order of the unrestricted VAR
 opt_lag <- VARselect(data.xts, lag.max = 10, type = "const")
 opt_lag$selection 
+no_lags <- as.numeric(opt_lag$selection[1])
 
 # different function (don't know the exact difference but leads in general to different results...)
 # lag length + rank
@@ -566,9 +561,56 @@ rownames(p_values_kpss[which(p_values_kpss$`p-value (2nd difference)`<0.05),])
 # None.
 
 
-# cointegration test
-# Therefore we should already select a few of the variables
-# and should not do it with the entire data.xts dataset
+# Johansen Procedure for VAR / Cointegration
+# ! Critical values are only reported for systems with less than 11 variables and are taken from Osterwald-Lenum
+# spec = "transitory" leads to the VECM meant in the paper (see ?ca.jo)
+# ecdet = "const" for constant term in cointegration (intercept)
+# FURTHER DATA-REDUCTION NEEDED
+# Try it out with the "4 important ones"
+subset.xts <- data.xts[,c("forecast_residual_load","COAL_API2", "NG_TTF", "EUA_price")]
+# optimal lag order of the subset-VAR 
+opt_lag_subset <- VARselect(subset.xts, lag.max = 50, type = "const")
+opt_lag_subset$selection 
+no_lags_subset <- as.numeric(opt_lag_subset$selection[1])
+
+cointegration <- ca.jo(subset.xts, type = "trace", ecdet = "const", spec = "transitory", K = no_lags_subset, dumvar = NULL)
+#summary(cointegration)
+# most important results
+cbind(cointegration@teststat, cointegration@cval)
+# Interpretation:
+# r=0 tests for presence of cointegration
+# test statistic for r=0 exceeds 1% sign.lvl. we have strong evidence to reject H_0 of no cointegration
+# 2nd test for r<=1 vs r>1 also provides clear evidence to reject r<=1
+# But: for sign.lvl. 0.01 we're not able to reject H_0: r<=2 
+# => 2 variables are cointegrated
+# DOES THIS TELL US WE NEED 2 VARIABLES AS LINEAR COMBINATION FOR A STATIONARY TS?
+# https://www.quantstart.com/articles/Johansen-Test-for-Cointegrating-Time-Series-Analysis-in-R/
+
+# Check if cointegrated time series we get is stationary
+#cointegrated = cointegration@V["constant",1] + cointegration@V[1,1]*data.xts[,"forecast_residual_load"] + cointegration@V[2,1]*data.xts[,"COAL_API2"] + cointegration@V[3,1]*data.xts[,"NG_TTF"] + cointegration@V[4,1]*data.xts[,"EUA_price"]
+#plot(cointegrated, type="l")
+#adf.test(cointegrated)
+
+# p-values for PP-test for subset (original data and after 1st difference)
+p_values_pp_subset <- data.frame(matrix(ncol = 2, nrow = dim(subset.xts)[2]))
+colnames(p_values_pp_subset) <- c("p-value (original data)", "p-value (1st difference)")
+rownames(p_values_pp_subset) <- colnames(subset.xts)
+for (i in 1:dim(p_values_pp_subset)[1]) {
+  pp <- pp.test(subset.xts[,i])
+  p_values_pp_subset[i,1] <- pp$p.value
+  # removing first value to get no NA's
+  pp2 <- pp.test(diff(subset.xts[,i], differences = 1)[-1])
+  p_values_pp_subset[i,2] <- pp2$p.value
+}
+
+# Estimating VECM
+VECM_subset <- VECM(subset.xts, lag = no_lags_subset, r = 2, estim = "ML")
+# there are also other ways to estimate VECM in R
+residuals <- VECM_subset$residuals
+
+# Jarque-Bera test
+# tests for normality in both the univariate and multivariate case
+
 
 
 
@@ -582,9 +624,6 @@ summary(var.model)
 
 
 
-VECM_tsDyn <- VECM(data = data.xts[,1:3], lag=3, r=2,
-                   estim = "ML",
-                   LRinclude = "none")
 
 
 
