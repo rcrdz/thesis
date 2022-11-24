@@ -44,12 +44,19 @@ data_raw.xts <- xts(data_raw[,-1], order.by = as.Date(data_raw[,1], "%d.%m.%y"))
 
 
 #####################
-### Cleaning data ###
+### Preprocessing ###
 #####################
 # Remove Time-variables ('DayofWeek' etc.)
 data.xts <- data_raw.xts[,! names(data_raw.xts) %in% c("DayofWeek", "Is_Weekday", "Seasons", "Holiday", "Year")]
 # Remove 'ShareOf's'
 data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("shareOf", names(data.xts))])]
+# Remove 'Clean prices': combination of "raw prices" and EUA price
+data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("CleanPrice", names(data.xts))])]
+# Remove 'renewables_forecast_error': 'renewables_forecast_error' = sum('biomass_production',...)-sum('gen_forecast_solar',...)
+data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("renewables_forecast_error", names(data.xts))])]
+# Remove 'Total_production' b/c of redundancy
+data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("Total_production", names(data.xts))])]
+# Important variables: 'forecast_residual_load', 'COAL_API2', 'NG_TTF', 'EUA_price'
 
 
 ################
