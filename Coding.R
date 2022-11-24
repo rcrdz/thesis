@@ -204,8 +204,8 @@ x <- which(corr_matrix_no_lags >= sort(corr_matrix_no_lags, decreasing = T)[10],
 x.order <- order(corr_matrix_no_lags[x], decreasing = T)
 x[x.order, ]
 # Plot the ones with highest correlation
-plot(data.xts$NG_CleanPrice, main = "NG_CleanPrice and NG_TTF") # example of 2 correlated time series
-lines(data.xts$NG_TTF, col = "red") # Plot of the highly correlated variables
+plot(data.xts$solar_production, main = "solar_production and GHI") # example of 2 correlated time series
+lines(data.xts$GHI, col = "red") # Plot of the highly correlated variables
 # It turns out that (obviously) NG_CleanPrice and NG_TTF is highly correlated
 
 # Plot of another two highly correlated time series (solar_production and GHI)
@@ -450,26 +450,6 @@ acf2(NG_TTF_diff, max.lag = 20) # with PACF's
 # Plot somehow indicates stationarity
 
 
-#####################
-### Cointegration ###
-#####################
-# Johansen cointegration test:
-# H_1 for the eigenvalue test: here are r+1 cointegration relations
-# If test fails to reject H_1 for the first time when r=1, then you have 1 cointegration relationship
-
-#cointegration <- ca.jo(data.xts, type = "eigen", ecdet = "const", spec = "transitory", K = 2, dumvar = NULL)
-# Not possible: Matrix not invertible, since linearly dependent columns (i.e. stronlgy correlated variables)
-
-# cointegration of exports (trace test)
-cointegration <- ca.jo(data.xts, type = "trace", ecdet = "const", spec = "transitory", K = 3, dumvar = NULL)
-#summary(cointegration)
-# Results:
-cbind(cointegration@teststat, cointegration@cval)
-
-
-
-
-
 ######################
 ### Fitting models ###
 ######################
@@ -487,6 +467,7 @@ fitv2 <- arima(data.xts[,60],order = c(2,1,2))
 aTSA::ts.diag(fitv2)
 acf(data.xts[,60])
 
+dev.off()
 fitv3 <- sarima(data.xts[,60], 2,1,2) # sarima also plots nice diagnostic plots
 
 # Plot differentiated time series
@@ -502,9 +483,9 @@ library(CausalImpact)
 library(NlinTS)
 
 
-######################
-#### Energy paper ####
-######################
+###############################################################
+#### Causal modeling and inference for electricity markets ####
+###############################################################
 
 ### log-scale??? ###
 
@@ -603,33 +584,52 @@ for (i in 1:dim(p_values_pp_subset)[1]) {
   p_values_pp_subset[i,2] <- pp2$p.value
 }
 
-# Estimating VECM
-VECM_subset <- VECM(subset.xts, lag = no_lags_subset, r = 2, estim = "ML")
+# Estimating VECM with VECM()
+VECM_VECM <- VECM(subset.xts, lag = no_lags_subset, r = 2, estim = "ML")
 # there are also other ways to estimate VECM in R
-residuals <- VECM_subset$residuals
+residuals <- VECM_VECM$residuals
 
-# Jarque-Bera test
+# Estimating VECM with cajorls()
+VECM_ca.jo <- cajorls(cointegration, r = 2)
+
+
+# Jarque-Bera test for residuals
 # tests for normality in both the univariate and multivariate case
+# H_0: normality
+#jarque.bera.test()
+# tests only for univariate time series (in)
+# -> different approach needed!
+
+# normality.test() computes univariate and multivariate Jarque-Bera tests for residuals of VECM
+# To use normality.test() we need to estimate vec2var
+# (restricted VECM)
+# the VAR representation of a VECM from ca.jo
+vec2var <- vec2var(cointegration, r=2)
+norm_test <- normality.test(vec2var, multivariate.only = FALSE)
+p_values_residuals <- data.frame(matrix(ncol = 1, nrow = dim(subset.xts)[2]+1))
+colnames(p_values_residuals) <- "p-value"
+rownames(p_values_residuals) <- c(colnames(subset.xts),"Multivariate")
+p_values_residuals[1,1] <- as.numeric(norm_test$jb.uni$`resids of forecast_residual_load`$p.value)
+p_values_residuals[2,1] <- as.numeric(norm_test$jb.uni$`resids of COAL_API2`$p.value)
+p_values_residuals[3,1] <- as.numeric(norm_test$jb.uni$`resids of NG_TTF`$p.value)
+p_values_residuals[4,1] <- as.numeric(norm_test$jb.uni$`resids of EUA_price`$p.value)
+p_values_residuals[5,1] <- as.numeric(norm_test$jb.mul$JB$p.value)
+# All values <.05 => residuals not normally distr. (also not multivariate normal)
+# [Geht bestimmt schöner zu coden..]
+
+# Autocorrelation between residuals?
+for (i in 1:dim(norm_test$resid)[2]) {
+  acf2(norm_test$resid[,i], main = paste("ACF and PACF of residuals of", colnames(subset.xts)[i]))
+}
+# showes no significant auto-correlation between the residuals
+# => assumption of independent and non-Gaussian residuals is not unreasonable
+# => LiNGAM can be used
+
+# weak exogeneity test
+# BUILD IT FROM HERE: https://stackoverflow.com/questions/64289992/vecm-in-r-testing-weak-exogeneity-and-imposing-restrictions
 
 
-
-
-
-### VAR model ###
-# lag length
-var.model <- VAR(y = data_without_timevariables.xts, type = "const", lag.max = 10)
-summary(var.model)
-
-
-
-
-
-
-
-
-
-vec2var_ca.jo <- vec2var(vecm.model, r=2)
-
-
+# exclusion test?
+# for more info on test: Juselius (2006)
 
 
