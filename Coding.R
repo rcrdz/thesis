@@ -265,6 +265,13 @@ plot(decomp_actual_load)
 actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365) - decomp_actual_load$seasonal
 plot(actual_load_SeasonAdj)
 
+stlm <- stl(ts(data_raw$actual_load, frequency = 365), s.window = "periodic")
+plot(stlm)
+
+seasonplot(ts(data_raw$actual_load, frequency = 365))
+
+seasonal
+
 
 ####################
 ### Stationarity ###
@@ -317,15 +324,15 @@ kpss.test(data.xts$DA_Price_DE)
 
 # Phillips-Perron Test for Unit Roots
 # H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
-pp_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(pp_stationary) <- "p-value"
-rownames(pp_stationary) <- colnames(data.xts)
-for (i in 1:dim(pp_stationary)[1]) {
+pp_pvals <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
+colnames(pp_pvals) <- "p-value"
+rownames(pp_pvals) <- colnames(data.xts)
+for (i in 1:dim(pp_pvals)[1]) {
   pp <- pp.test(data.xts[,i])
-  pp_stationary[i,1] <- pp$p.value
+  pp_pvals[i,1] <- pp$p.value
 }
 # non-stationary ts according to PP (SIGNIFICANCE LEVEL 0.05)
-rownames(pp_stationary)[which(pp_stationary>=0.05)]
+rownames(pp_pvals)[which(pp_pvals>=0.05)]
 
 
 # Phillips-Perron Test when variables with zeros removed and log applied
@@ -343,20 +350,31 @@ rownames(pp_stationary)[which(pp_stationary>=0.05)]
 
 # ADF test
 # H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
-adf_stationary <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(adf_stationary) <- "p-value"
-rownames(adf_stationary) <- colnames(data.xts)
-for (i in 1:dim(adf_stationary)[1]) {
+adf_pvals <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
+colnames(adf_pvals) <- "p-value"
+rownames(adf_pvals) <- colnames(data.xts)
+for (i in 1:dim(adf_pvals)[1]) {
   adf <- adf.test(data.xts[,i])
-  adf_stationary[i,1] <- adf$p.value
+  adf_pvals[i,1] <- adf$p.value
 }
 # non-stationry ts according to ADF (SIGNIFICANCE LEVEL 0.05)
-rownames(adf_stationary)[which(adf_stationary>=0.05)]
+rownames(adf_pvals)[which(adf_pvals>=0.05)]
 
 
-# Results are different for each of the tests when compared
+# KPSS test
+kpss_pvals <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
+colnames(kpss_pvals) <- "p-value"
+rownames(kpss_pvals) <- colnames(data.xts)
+for (i in 1:dim(kpss_pvals)[1]) {
+  kpss <- kpss.test(data.xts[,i])
+  kpss_pvals[i,1] <- kpss$p.value
+}
+
+
+
+# Results are different for PP and ADF when compared
 # Which ones are different?
-rownames(adf_stationary)[which(adf_stationary != pp_stationary)]
+rownames(adf_pvals)[which(adf_pvals != pp_pvals)]
 # Is it because of structural break?
 # Zivot and Andrews Unit Root Test # because of structural break
 library(urca)
@@ -500,45 +518,45 @@ rk_sel <- lags.select(data.xts)
 summary(rk_sel)
 
 # p-values for PP-test (original data and after 1st difference)
-p_values_pp <- data.frame(matrix(ncol = 2, nrow = dim(data.xts)[2]))
-colnames(p_values_pp) <- c("p-value (original data)", "p-value (1st difference)")
-rownames(p_values_pp) <- colnames(data.xts)
-for (i in 1:dim(p_values_pp)[1]) {
+pp_pvals_diffs <- data.frame(matrix(ncol = 2, nrow = dim(data.xts)[2]))
+colnames(pp_pvals_diffs) <- c("p-value (original data)", "p-value (1st difference)")
+rownames(pp_pvals_diffs) <- colnames(data.xts)
+for (i in 1:dim(pp_pvals_diffs)[1]) {
   pp <- pp.test(data.xts[,i])
-  p_values_pp[i,1] <- pp$p.value
+  pp_pvals_diffs[i,1] <- pp$p.value
   # removing first value to get no NA's
   pp2 <- pp.test(diff(data.xts[,i], differences = 1)[-1])
-  p_values_pp[i,2] <- pp2$p.value
+  pp_pvals_diffs[i,2] <- pp2$p.value
 }
 # variables with p-value > 0.05 without differentiation (stationary)
-rownames(p_values_pp[which(p_values_pp$`p-value (original data)`>0.05),])
+rownames(pp_pvals_diffs[which(pp_pvals_diffs$`p-value (original data)`>0.05),])
 # variables with p-value > 0.05 after 1st difference
-rownames(p_values_pp[which(p_values_pp$`p-value (1st difference)`>0.05),])
+rownames(pp_pvals_diffs[which(pp_pvals_diffs$`p-value (1st difference)`>0.05),])
 
 
 # p-values for KPSS-test (original data and after 1st difference)
 # H_0: time series is stationary
 # p-value < 0.05 indicates non-stationarity
-p_values_kpss <- data.frame(matrix(ncol = 3, nrow = dim(data.xts)[2]))
-colnames(p_values_kpss) <- c("p-value (original data)", "p-value (1st difference)", "p-value (2nd difference)")
-rownames(p_values_kpss) <- colnames(data.xts)
-for (i in 1:dim(p_values_kpss)[1]) {
+kpss_pvals_diffs <- data.frame(matrix(ncol = 3, nrow = dim(data.xts)[2]))
+colnames(kpss_pvals_diffs) <- c("p-value (original data)", "p-value (1st difference)", "p-value (2nd difference)")
+rownames(kpss_pvals_diffs) <- colnames(data.xts)
+for (i in 1:dim(kpss_pvals_diffs)[1]) {
   kpss <- kpss.test(data.xts[,i])
-  p_values_kpss[i,1] <- kpss$p.value
+  kpss_pvals_diffs[i,1] <- kpss$p.value
   # removing first value to get no NA's
   kpss2 <- kpss.test(diff(data.xts[,i], differences = 1)[-1])
-  p_values_kpss[i,2] <- kpss2$p.value
+  kpss_pvals_diffs[i,2] <- kpss2$p.value
   # removing second value to get no NA's
   kpss3 <- kpss.test(diff(data.xts[,i], differences = 2)[-c(1, 2)])
-  p_values_kpss[i,3] <- kpss3$p.value
+  kpss_pvals_diffs[i,3] <- kpss3$p.value
 }
 # variables with p-value < 0.05 without differentiation (stationary)
-rownames(p_values_kpss[which(p_values_kpss$`p-value (original data)`<0.05),])
+rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (original data)`<0.05),])
 # variables with p-value < 0.05 after 1st difference
-rownames(p_values_kpss[which(p_values_kpss$`p-value (1st difference)`<0.05),])
+rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (1st difference)`<0.05),])
 # after 1st difference there are still nonstationary time series (regarding to KPSS)
 # variables with p-value < 0.05 after 2nd difference
-rownames(p_values_kpss[which(p_values_kpss$`p-value (2nd difference)`<0.05),])
+rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (2nd difference)`<0.05),])
 # None.
 
 
@@ -549,10 +567,20 @@ rownames(p_values_kpss[which(p_values_kpss$`p-value (2nd difference)`<0.05),])
 # FURTHER DATA-REDUCTION NEEDED
 # Try it out with the "4 important ones"
 subset.xts <- data.xts[,c("forecast_residual_load","COAL_API2", "NG_TTF", "EUA_price")]
+
+pvals_subset <- merge(pp_pvals_diffs[rownames(pp_pvals_diffs) %in% names(subset.xts), ], kpss_pvals_diffs[rownames(kpss_pvals_diffs) %in% names(subset.xts), ], by = 0, sort = FALSE)
+colnames(pvals_subset) <- c("Variable","PP-Test: p-value (original data)", "PP-Test: p-value (1st difference)", "KPSS-Test: p-value (original data)", "KPSS-Test: p-value (1st difference)", "KPSS-Test: p-value (2nd difference)")
+pvals_subset <- pvals_subset[, c(1,2,4,3,5,6)]
+
 # optimal lag order of the subset-VAR 
-opt_lag_subset <- VARselect(subset.xts, lag.max = 50, type = "const")
+# VARselect heavily depends on lag.max 
+# https://stats.stackexchange.com/questions/187289/var-lag-selection-heavily-depends-on-maximum-lag-investigated
+# https://stats.stackexchange.com/questions/399772/aic-bic-values-keep-changing-with-lag-max-in-var-model
+opt_lag_subset <- VARselect(subset.xts, lag.max = 25, type = "const")
 opt_lag_subset$selection 
 no_lags_subset <- as.numeric(opt_lag_subset$selection[1])
+# optimal order of lags for each indivual variable instead of together
+#lapply(subset.xts, VARselect)
 
 cointegration <- ca.jo(subset.xts, type = "trace", ecdet = "const", spec = "transitory", K = no_lags_subset, dumvar = NULL)
 #summary(cointegration)
@@ -572,17 +600,9 @@ cbind(cointegration@teststat, cointegration@cval)
 #plot(cointegrated, type="l")
 #adf.test(cointegrated)
 
-# p-values for PP-test for subset (original data and after 1st difference)
-p_values_pp_subset <- data.frame(matrix(ncol = 2, nrow = dim(subset.xts)[2]))
-colnames(p_values_pp_subset) <- c("p-value (original data)", "p-value (1st difference)")
-rownames(p_values_pp_subset) <- colnames(subset.xts)
-for (i in 1:dim(p_values_pp_subset)[1]) {
-  pp <- pp.test(subset.xts[,i])
-  p_values_pp_subset[i,1] <- pp$p.value
-  # removing first value to get no NA's
-  pp2 <- pp.test(diff(subset.xts[,i], differences = 1)[-1])
-  p_values_pp_subset[i,2] <- pp2$p.value
-}
+beta <- cointegration@V
+alpha <- cointegration@W
+
 
 # Estimating VECM with VECM()
 VECM_VECM <- VECM(subset.xts, lag = no_lags_subset, r = 2, estim = "ML")
@@ -591,6 +611,10 @@ residuals <- VECM_VECM$residuals
 
 # Estimating VECM with cajorls()
 VECM_ca.jo <- cajorls(cointegration, r = 2)
+summary(VECM_ca.jo$rlm)
+VECM_ca.jo$beta
+VECM_ca.jo$rlm$coefficients
+
 
 
 # Jarque-Bera test for residuals
@@ -604,8 +628,8 @@ VECM_ca.jo <- cajorls(cointegration, r = 2)
 # To use normality.test() we need to estimate vec2var
 # (restricted VECM)
 # the VAR representation of a VECM from ca.jo
-vec2var <- vec2var(cointegration, r=2)
-norm_test <- normality.test(vec2var, multivariate.only = FALSE)
+vecm.level <- vec2var(cointegration, r=2)
+norm_test <- normality.test(vecm.level, multivariate.only = FALSE)
 p_values_residuals <- data.frame(matrix(ncol = 1, nrow = dim(subset.xts)[2]+1))
 colnames(p_values_residuals) <- "p-value"
 rownames(p_values_residuals) <- c(colnames(subset.xts),"Multivariate")
@@ -627,9 +651,37 @@ for (i in 1:dim(norm_test$resid)[2]) {
 
 # weak exogeneity test
 # BUILD IT FROM HERE: https://stackoverflow.com/questions/64289992/vecm-in-r-testing-weak-exogeneity-and-imposing-restrictions
+# restriction matrix:
+DA <- matrix(c(1,0,0,0,0,1,0,0), c(4,2))
+exogeneity_test <- alrtest(cointegration, A=DA, r=2)
+summary(exogeneity_test)
 
 
-# exclusion test?
+# exclusion test
 # for more info on test: Juselius (2006)
+
+# standardize time series
+subset.xts_std <- scale(subset.xts)
+plot(subset.xts_std)
+
+
+# normalized cointegration vectors
+VECM_ca.jo$beta
+# 1st cointegration vector
+coint.ts1 <- VECM_ca.jo$beta[1,1]*subset.xts$forecast_residual_load + VECM_ca.jo$beta[2,1]*subset.xts$COAL_API2 +
+  VECM_ca.jo$beta[3,1]*subset.xts$NG_TTF + VECM_ca.jo$beta[4,1]*subset.xts$EUA_price + VECM_ca.jo$beta[5,1]
+adf.test(coint.ts1)
+plot(coint.ts1)
+# 2nd cointegration vector
+coint.ts2 <- VECM_ca.jo$beta[1,2]*subset.xts$forecast_residual_load + VECM_ca.jo$beta[2,2]*subset.xts$COAL_API2 +
+  VECM_ca.jo$beta[3,2]*subset.xts$NG_TTF + VECM_ca.jo$beta[4,2]*subset.xts$EUA_price + VECM_ca.jo$beta[5,2]
+adf.test(coint.ts2)
+plot(coint.ts2)
+# not stationary -> WHY??
+
+# PI = Error-correction-term
+pi <- alpha%*%t(beta)
+
+
 
 
