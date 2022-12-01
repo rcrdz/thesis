@@ -11,6 +11,8 @@ library(feasts)
 library(tsDyn)
 library(vars)
 library(strucchange)
+library(pcalg)
+library(igraph)
 
 source("GrangerTests.R")
 source("ConditionalGrangerCausality.R")
@@ -567,10 +569,12 @@ rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (2nd difference)`<0.05
 # FURTHER DATA-REDUCTION NEEDED
 # Try it out with the "4 important ones"
 subset.xts <- data.xts[,c("forecast_residual_load","COAL_API2", "NG_TTF", "EUA_price")]
+plot(log(subset.xts))
 
 pvals_subset <- merge(pp_pvals_diffs[rownames(pp_pvals_diffs) %in% names(subset.xts), ], kpss_pvals_diffs[rownames(kpss_pvals_diffs) %in% names(subset.xts), ], by = 0, sort = FALSE)
-colnames(pvals_subset) <- c("Variable","PP-Test: p-value (original data)", "PP-Test: p-value (1st difference)", "KPSS-Test: p-value (original data)", "KPSS-Test: p-value (1st difference)", "KPSS-Test: p-value (2nd difference)")
+colnames(pvals_subset) <- c("Variable", "PP-Test: p-value (original data)", "PP-Test: p-value (1st difference)", "KPSS-Test: p-value (original data)", "KPSS-Test: p-value (1st difference)", "KPSS-Test: p-value (2nd difference)")
 pvals_subset <- pvals_subset[, c(1,2,4,3,5,6)]
+
 
 # optimal lag order of the subset-VAR 
 # VARselect heavily depends on lag.max 
@@ -582,35 +586,39 @@ no_lags_subset <- as.numeric(opt_lag_subset$selection[1])
 # optimal order of lags for each indivual variable instead of together
 #lapply(subset.xts, VARselect)
 
-cointegration <- ca.jo(subset.xts, type = "trace", ecdet = "const", spec = "transitory", K = no_lags_subset, dumvar = NULL)
-#summary(cointegration)
+# https://www.r-econometrics.com/timeseries/vecintro/
+coint_test <- ca.jo(subset.xts, type = "trace", ecdet = "const", spec = "transitory", K = no_lags_subset, dumvar = NULL)
+coint_test_noconst <- ca.jo(subset.xts, type = "trace", ecdet = "none", spec = "transitory", K = no_lags_subset, dumvar = NULL)
+#summary(coint_test)
 # most important results
-cbind(cointegration@teststat, cointegration@cval)
+cbind(coint_test@teststat, coint_test@cval)
 # Interpretation:
 # r=0 tests for presence of cointegration
 # test statistic for r=0 exceeds 1% sign.lvl. we have strong evidence to reject H_0 of no cointegration
 # 2nd test for r<=1 vs r>1 also provides clear evidence to reject r<=1
 # But: for sign.lvl. 0.01 we're not able to reject H_0: r<=2 
-# => 2 variables are cointegrated
-# DOES THIS TELL US WE NEED 2 VARIABLES AS LINEAR COMBINATION FOR A STATIONARY TS?
+# => 2 cointegrated vectors at a 1% significance level
+# A cointegrating vector is a stationary linear combination of possibly nonstationary vector time-series components
 # https://www.quantstart.com/articles/Johansen-Test-for-Cointegrating-Time-Series-Analysis-in-R/
 
 # Check if cointegrated time series we get is stationary
-#cointegrated = cointegration@V["constant",1] + cointegration@V[1,1]*data.xts[,"forecast_residual_load"] + cointegration@V[2,1]*data.xts[,"COAL_API2"] + cointegration@V[3,1]*data.xts[,"NG_TTF"] + cointegration@V[4,1]*data.xts[,"EUA_price"]
+#cointegrated = coint_test@V["constant",1] + coint_test@V[1,1]*data.xts[,"forecast_residual_load"] + coint_test@V[2,1]*data.xts[,"COAL_API2"] + coint_test@V[3,1]*data.xts[,"NG_TTF"] + coint_test@V[4,1]*data.xts[,"EUA_price"]
 #plot(cointegrated, type="l")
 #adf.test(cointegrated)
 
-beta <- cointegration@V
-alpha <- cointegration@W
-
+beta <- coint_test@V
+alpha <- coint_test@W
+gamma <- coint_test@GAMMA
 
 # Estimating VECM with VECM()
-VECM_VECM <- VECM(subset.xts, lag = no_lags_subset, r = 2, estim = "ML")
-# there are also other ways to estimate VECM in R
+VECM_VECM <- VECM(subset.xts, lag = no_lags_subset-1, r = 2, estim = "ML")
+# NOTE: VECM(): lag = k-1
+summary(VECM_VECM)
 residuals <- VECM_VECM$residuals
 
+
 # Estimating VECM with cajorls()
-VECM_ca.jo <- cajorls(cointegration, r = 2)
+VECM_ca.jo <- cajorls(coint_test, r = 2)
 summary(VECM_ca.jo$rlm)
 VECM_ca.jo$beta
 VECM_ca.jo$rlm$coefficients
@@ -628,16 +636,16 @@ VECM_ca.jo$rlm$coefficients
 # To use normality.test() we need to estimate vec2var
 # (restricted VECM)
 # the VAR representation of a VECM from ca.jo
-vecm.level <- vec2var(cointegration, r=2)
+vecm.level <- vec2var(coint_test, r=2)
 norm_test <- normality.test(vecm.level, multivariate.only = FALSE)
-p_values_residuals <- data.frame(matrix(ncol = 1, nrow = dim(subset.xts)[2]+1))
-colnames(p_values_residuals) <- "p-value"
-rownames(p_values_residuals) <- c(colnames(subset.xts),"Multivariate")
-p_values_residuals[1,1] <- as.numeric(norm_test$jb.uni$`resids of forecast_residual_load`$p.value)
-p_values_residuals[2,1] <- as.numeric(norm_test$jb.uni$`resids of COAL_API2`$p.value)
-p_values_residuals[3,1] <- as.numeric(norm_test$jb.uni$`resids of NG_TTF`$p.value)
-p_values_residuals[4,1] <- as.numeric(norm_test$jb.uni$`resids of EUA_price`$p.value)
-p_values_residuals[5,1] <- as.numeric(norm_test$jb.mul$JB$p.value)
+pvals_res <- data.frame(matrix(ncol = 1, nrow = dim(subset.xts)[2]+1))
+colnames(pvals_res) <- "p-value"
+rownames(pvals_res) <- c(colnames(subset.xts),"Multivariate")
+pvals_res[1,1] <- as.numeric(norm_test$jb.uni$`resids of forecast_residual_load`$p.value)
+pvals_res[2,1] <- as.numeric(norm_test$jb.uni$`resids of COAL_API2`$p.value)
+pvals_res[3,1] <- as.numeric(norm_test$jb.uni$`resids of NG_TTF`$p.value)
+pvals_res[4,1] <- as.numeric(norm_test$jb.uni$`resids of EUA_price`$p.value)
+pvals_res[5,1] <- as.numeric(norm_test$jb.mul$JB$p.value)
 # All values <.05 => residuals not normally distr. (also not multivariate normal)
 # [Geht bestimmt schöner zu coden..]
 
@@ -653,12 +661,19 @@ for (i in 1:dim(norm_test$resid)[2]) {
 # BUILD IT FROM HERE: https://stackoverflow.com/questions/64289992/vecm-in-r-testing-weak-exogeneity-and-imposing-restrictions
 # restriction matrix:
 DA <- matrix(c(1,0,0,0,0,1,0,0), c(4,2))
-exogeneity_test <- alrtest(cointegration, A=DA, r=2)
+exogeneity_test <- alrtest(coint_test, A=DA, r=2)
 summary(exogeneity_test)
 
 
 # exclusion test
 # for more info on test: Juselius (2006)
+
+
+# Obtain Impulse-response-function
+#ir <- irf(vecm.level, n.ahead = 20, impulse = "EUA_price", response = "COAL_API2",
+#          ortho = FALSE, runs = 500)
+#plot(ir)
+
 
 # standardize time series
 subset.xts_std <- scale(subset.xts)
@@ -681,7 +696,30 @@ plot(coint.ts2)
 
 # PI = Error-correction-term
 pi <- alpha%*%t(beta)
+# is the same as coint_test@PI
 
 
+# Procedure on p. 7 of paper
 
 
+# Translate the estimated VECM coeffs into a VAR representation
+vecm.level
+# coeffs: vecm.level$A$...
+# residuals
+res.vecm.level <- vecm.level$resid
+
+# LiNGAM analysis
+# Note: res$Bpruned is transpose of adjacency matrix
+res <- lingam(res.vecm.level)
+adjmat <- as(res, "amat")
+B_null <- t(res$Bpruned)
+colnames(B_null) <- names(subset.xts)
+
+# B_0: The instantaneous causal effects
+g <- graph_from_adjacency_matrix(
+  B_null,
+  mode = "directed",
+  weighted = TRUE
+)
+
+plot.igraph(g, layout=layout.reingold.tilford, edge.arrow.size=0.01, vertex.size = 5, vertex.label.cex = 1)
