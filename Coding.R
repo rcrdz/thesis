@@ -13,6 +13,7 @@ library(vars)
 library(strucchange)
 library(pcalg)
 library(igraph)
+library(seasonal)
 
 source("GrangerTests.R")
 source("ConditionalGrangerCausality.R")
@@ -261,7 +262,7 @@ qqline(rnorm(dim(data.xts)[1]))
 # Decomposition 
 # frequency = 365 means: 365 obs. until season repeats (yearly seasonality)
 # Example: forecast_residual_load
-decomp_actual_load <- decompose(ts(data.xts$actual_load, frequency = 365))
+decomp_actual_load <- stats::decompose(ts(data.xts$actual_load, frequency = 365))
 plot(decomp_actual_load)
 # Seasonally Adjusting
 actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365) - decomp_actual_load$seasonal
@@ -475,27 +476,29 @@ acf2(NG_TTF_diff, max.lag = 20) # with PACF's
 ######################
 
 # Fitting 'Netherlands export' with auto.arima()
-fit <- auto.arima(data.xts[,60], trace=TRUE) # Choose ARIMA(2,1,2)
-#par(mar=c(1,1,1,1)) # Standard: par(mar=c(5.1, 4.1, 4.1, 2.1))
-# dev.off()
+fit <- auto.arima(data.xts$Netherlands_export, trace=TRUE) # Choose ARIMA(2,1,2)
+# Best model: ARIMA(2,1,2)
+par(mar=c(1,1,1,1))
 tsdiag(fit)
+dev.off()
 qqnorm(fit$residuals)
-TSstudio::arima_diag(ts.obj = fit)
+TSstudio::arima_diag(ts.obj = ts(data.xts$Netherlands_export, frequency = 365))
 
 # Diagnostics from different package, therefore we need model in different type
-fitv2 <- arima(data.xts[,60],order = c(2,1,2))
+fitv2 <- arima(data.xts$Netherlands_export,order = c(2,1,2))
+par(mar=c(1,1,1,1))
 aTSA::ts.diag(fitv2)
-acf(data.xts[,60])
-
 dev.off()
-fitv3 <- sarima(data.xts[,60], 2,1,2) # sarima also plots nice diagnostic plots
+acf(data.xts$Netherlands_export)
+
+fitv3 <- sarima(data.xts$Netherlands_export, 2,1,2) # sarima also plots nice diagnostic plots
 
 # Plot differentiated time series
-plot(diff(data.xts[,60], differences = ndiffs(data.xts[,60])))
+plot(diff(data.xts$Netherlands_export, differences = ndiffs(data.xts$Netherlands_export, alpha = 0.05, test = "kpss")))
 
 # Histogram (distribution of data)
-hist(data.xts[,60], main = "TITLE", probability = TRUE) #not stationary
-hist(diff(data.xts[,60], differences = ndiffs(data.xts[,60])), main = "TITLE", probability = TRUE)
+hist(data.xts$Netherlands_export, main = "TITLE", probability = TRUE) #not stationary
+hist(diff(data.xts$Netherlands_export, differences = ndiffs(data.xts[,60])), main = "TITLE", probability = TRUE)
 
 # (Maybe) good packages for causal discovery for TS-data:
 #library(bsts)
@@ -552,7 +555,9 @@ for (i in 1:dim(kpss_pvals_diffs)[1]) {
   kpss3 <- kpss.test(diff(data.xts[,i], differences = 2)[-c(1, 2)])
   kpss_pvals_diffs[i,3] <- kpss3$p.value
 }
-# variables with p-value < 0.05 without differentiation (stationary)
+# variables with p-value > 0.05 without differentiation (stationary)
+rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (original data)`>0.05),])
+# variables with p-value < 0.05 without differentiation (not stationary)
 rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (original data)`<0.05),])
 # variables with p-value < 0.05 after 1st difference
 rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (1st difference)`<0.05),])
@@ -567,8 +572,11 @@ rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (2nd difference)`<0.05
 # spec = "transitory" leads to the VECM meant in the paper (see ?ca.jo)
 # ecdet = "const" for constant term in cointegration (intercept)
 # FURTHER DATA-REDUCTION NEEDED
-# Try it out with the "4 important ones"
-subset.xts <- data.xts[,c("forecast_residual_load","COAL_API2", "NG_TTF", "EUA_price")]
+# => Try it out with a subset
+# Try a subset of variables which are I(1) (regarding to pp.test)
+subset.xts <- data.xts[, c("NG_TTF", "EUA_price", "COAL_API2")]
+names(subset.xts)
+plot(subset.xts)
 plot(log(subset.xts))
 
 pvals_subset <- merge(pp_pvals_diffs[rownames(pp_pvals_diffs) %in% names(subset.xts), ], kpss_pvals_diffs[rownames(kpss_pvals_diffs) %in% names(subset.xts), ], by = 0, sort = FALSE)
@@ -589,15 +597,15 @@ no_lags_subset <- as.numeric(opt_lag_subset$selection[1])
 # https://www.r-econometrics.com/timeseries/vecintro/
 coint_test <- ca.jo(subset.xts, type = "trace", ecdet = "const", spec = "transitory", K = no_lags_subset, dumvar = NULL)
 coint_test_noconst <- ca.jo(subset.xts, type = "trace", ecdet = "none", spec = "transitory", K = no_lags_subset, dumvar = NULL)
+coint_test_trend <- ca.jo(subset.xts, type = "trace", ecdet = "trend", spec = "transitory", K = no_lags_subset, dumvar = NULL)
 #summary(coint_test)
 # most important results
 cbind(coint_test@teststat, coint_test@cval)
 # Interpretation:
 # r=0 tests for presence of cointegration
 # test statistic for r=0 exceeds 1% sign.lvl. we have strong evidence to reject H_0 of no cointegration
-# 2nd test for r<=1 vs r>1 also provides clear evidence to reject r<=1
-# But: for sign.lvl. 0.01 we're not able to reject H_0: r<=2 
-# => 2 cointegrated vectors at a 1% significance level
+# But: for sign.lvl. 0.01 we're not able to reject H_0: r<=1 
+# => 1 cointegrated vectors at a 1% significance level
 # A cointegrating vector is a stationary linear combination of possibly nonstationary vector time-series components
 # https://www.quantstart.com/articles/Johansen-Test-for-Cointegrating-Time-Series-Analysis-in-R/
 
@@ -608,17 +616,17 @@ cbind(coint_test@teststat, coint_test@cval)
 
 beta <- coint_test@V
 alpha <- coint_test@W
-gamma <- coint_test@GAMMA
+gammas <- coint_test@GAMMA
 
 # Estimating VECM with VECM()
-VECM_VECM <- VECM(subset.xts, lag = no_lags_subset-1, r = 2, estim = "ML")
+VECM_VECM <- VECM(subset.xts, lag = no_lags_subset-1, r = 1, estim = "ML")
 # NOTE: VECM(): lag = k-1
 summary(VECM_VECM)
 residuals <- VECM_VECM$residuals
 
 
 # Estimating VECM with cajorls()
-VECM_ca.jo <- cajorls(coint_test, r = 2)
+VECM_ca.jo <- cajorls(coint_test, r = 1)
 summary(VECM_ca.jo$rlm)
 VECM_ca.jo$beta
 VECM_ca.jo$rlm$coefficients
@@ -636,16 +644,15 @@ VECM_ca.jo$rlm$coefficients
 # To use normality.test() we need to estimate vec2var
 # (restricted VECM)
 # the VAR representation of a VECM from ca.jo
-vecm.level <- vec2var(coint_test, r=2)
+vecm.level <- vec2var(coint_test, r=1)
 norm_test <- normality.test(vecm.level, multivariate.only = FALSE)
 pvals_res <- data.frame(matrix(ncol = 1, nrow = dim(subset.xts)[2]+1))
 colnames(pvals_res) <- "p-value"
 rownames(pvals_res) <- c(colnames(subset.xts),"Multivariate")
-pvals_res[1,1] <- as.numeric(norm_test$jb.uni$`resids of forecast_residual_load`$p.value)
-pvals_res[2,1] <- as.numeric(norm_test$jb.uni$`resids of COAL_API2`$p.value)
-pvals_res[3,1] <- as.numeric(norm_test$jb.uni$`resids of NG_TTF`$p.value)
-pvals_res[4,1] <- as.numeric(norm_test$jb.uni$`resids of EUA_price`$p.value)
-pvals_res[5,1] <- as.numeric(norm_test$jb.mul$JB$p.value)
+pvals_res[1,1] <- as.numeric(norm_test$jb.uni$`resids of NG_TTF`$p.value)
+pvals_res[2,1] <- as.numeric(norm_test$jb.uni$`resids of EUA_price`$p.value)
+pvals_res[3,1] <- as.numeric(norm_test$jb.uni$`resids of COAL_API2`$p.value)
+pvals_res[4,1] <- as.numeric(norm_test$jb.mul$JB$p.value)
 # All values <.05 => residuals not normally distr. (also not multivariate normal)
 # [Geht bestimmt schöner zu coden..]
 
@@ -670,8 +677,7 @@ summary(exogeneity_test)
 
 
 # Obtain Impulse-response-function
-#ir <- irf(vecm.level, n.ahead = 20, impulse = "EUA_price", response = "COAL_API2",
-#          ortho = FALSE, runs = 500)
+#ir <- irf(vecm.level, n.ahead = 20, runs = 500)
 #plot(ir)
 
 
@@ -682,17 +688,13 @@ plot(subset.xts_std)
 
 # normalized cointegration vectors
 VECM_ca.jo$beta
+
 # 1st cointegration vector
-coint.ts1 <- VECM_ca.jo$beta[1,1]*subset.xts$forecast_residual_load + VECM_ca.jo$beta[2,1]*subset.xts$COAL_API2 +
-  VECM_ca.jo$beta[3,1]*subset.xts$NG_TTF + VECM_ca.jo$beta[4,1]*subset.xts$EUA_price + VECM_ca.jo$beta[5,1]
+coint.ts1 <- VECM_ca.jo$beta[1,1]*subset.xts$NG_TTF + VECM_ca.jo$beta[2,1]*subset.xts$EUA_price +
+  VECM_ca.jo$beta[3,1]*subset.xts$COAL_API2 + VECM_ca.jo$beta[4,1]
 adf.test(coint.ts1)
 plot(coint.ts1)
-# 2nd cointegration vector
-coint.ts2 <- VECM_ca.jo$beta[1,2]*subset.xts$forecast_residual_load + VECM_ca.jo$beta[2,2]*subset.xts$COAL_API2 +
-  VECM_ca.jo$beta[3,2]*subset.xts$NG_TTF + VECM_ca.jo$beta[4,2]*subset.xts$EUA_price + VECM_ca.jo$beta[5,2]
-adf.test(coint.ts2)
-plot(coint.ts2)
-# not stationary -> WHY??
+# not stationary => WHY??
 
 # PI = Error-correction-term
 pi <- alpha%*%t(beta)
@@ -723,3 +725,7 @@ g <- graph_from_adjacency_matrix(
 )
 
 plot.igraph(g, layout=layout.reingold.tilford, edge.arrow.size=0.01, vertex.size = 5, vertex.label.cex = 1)
+
+
+# How to combine unit root and stationary tests
+# https://stats.stackexchange.com/questions/30569/what-is-the-difference-between-a-stationary-test-and-a-unit-root-test/235916#235916
