@@ -14,6 +14,10 @@ library(strucchange)
 library(pcalg)
 library(igraph)
 library(seasonal)
+library(urca)
+library(strucchange)
+
+
 
 source("GrangerTests.R")
 source("ConditionalGrangerCausality.R")
@@ -308,35 +312,18 @@ for (i in 1:dim(data.xts)[2]) {
 
 # Tests
 # https://stats.stackexchange.com/questions/88407/adf-test-pp-test-kpss-test-which-test-to-prefer
-# Unit root tests:
-# H_0: Unit root
+# Unit root tests: ADF, PP
+# H_0: Unit root (equivalently, x is a non-stationary time series)
 # H_1: Process has root outside the unit circle, which is usually equivalent to stationarity or trend stationarity
 # adf.test and pp.test correct for lags (compared to df-test)
-# Example: DA_Price_DE
-adf.test(data.xts$DA_Price_DE)
-pp.test(data.xts$DA_Price_DE)
 
-# stationarity test:
+
+# Stationarity test: KPSS (non-parametric)
 # H_0: (Trend) Stationarity
-# H_1: There is a unit root.
-# kpss.test: non-parametric test
-kpss.test(data.xts$DA_Price_DE)
+# H_1: There is a unit root
 
 # How unit-root test and stationarity-test complement each other:
 # https://stats.stackexchange.com/questions/30569/what-is-the-difference-between-a-stationary-test-and-a-unit-root-test/235916#235916(I
-
-# Phillips-Perron Test for Unit Roots
-# H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
-pp_pvals <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(pp_pvals) <- "p-value"
-rownames(pp_pvals) <- colnames(data.xts)
-for (i in 1:dim(pp_pvals)[1]) {
-  pp <- pp.test(data.xts[,i])
-  pp_pvals[i,1] <- pp$p.value
-}
-# non-stationary ts according to PP (SIGNIFICANCE LEVEL 0.05)
-rownames(pp_pvals)[which(pp_pvals>=0.05)]
-
 
 # Phillips-Perron Test when variables with zeros removed and log applied
 #pp_stationary_log <- data.frame(matrix(ncol = 1, nrow = length(colnames(non_negatives.xts))))
@@ -351,39 +338,64 @@ rownames(pp_pvals)[which(pp_pvals>=0.05)]
 #  }
 #}
 
-# ADF test
-# H_0: unit root of a univariate time series x (equivalently, x is a non-stationary time series)
-adf_pvals <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(adf_pvals) <- "p-value"
-rownames(adf_pvals) <- colnames(data.xts)
-for (i in 1:dim(adf_pvals)[1]) {
+pvals_tests <- data.frame(matrix(ncol = 3, nrow = length(colnames(data.xts))))
+colnames(pvals_tests) <- c("ADF", "PP", "KPSS")
+rownames(pvals_tests) <- colnames(data.xts)
+for (i in 1:dim(pvals_tests)[1]) {
   adf <- adf.test(data.xts[,i])
-  adf_pvals[i,1] <- adf$p.value
-}
-# non-stationry ts according to ADF (SIGNIFICANCE LEVEL 0.05)
-rownames(adf_pvals)[which(adf_pvals>=0.05)]
-
-
-# KPSS test
-kpss_pvals <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(kpss_pvals) <- "p-value"
-rownames(kpss_pvals) <- colnames(data.xts)
-for (i in 1:dim(kpss_pvals)[1]) {
+  pvals_tests[i,1] <- adf$p.value
+  pp <- pp.test(data.xts[,i])
+  pvals_tests[i,2] <- pp$p.value
   kpss <- kpss.test(data.xts[,i])
-  kpss_pvals[i,1] <- kpss$p.value
+  pvals_tests[i,3] <- kpss$p.value
 }
 
-
+sign.lvl <- 0.05
+stationarity <- data.frame(matrix(ncol = 3, nrow = length(colnames(data.xts))))
+colnames(stationarity) <- c("ADF: stationary?", "PP: stationary?", "KPSS: stationary?")
+rownames(stationarity) <- colnames(data.xts)
+for (i in 1:dim(stationarity)[1]) {
+  if(pvals_tests[i,1] < sign.lvl){
+    stationarity[i,1] <- TRUE
+  } else {
+    stationarity[i,1] <- FALSE
+  }
+  if(pvals_tests[i,2] < sign.lvl){
+    stationarity[i,2] <- TRUE
+  } else {
+    stationarity[i,2] <- FALSE
+  }
+  if(pvals_tests[i,3] < sign.lvl){
+    stationarity[i,3] <- FALSE
+  } else {
+    stationarity[i,3] <- TRUE
+  }
+}
 
 # Results are different for PP and ADF when compared
 # Which ones are different?
-rownames(adf_pvals)[which(adf_pvals != pp_pvals)]
-# Is it because of structural break?
-# Zivot and Andrews Unit Root Test # because of structural break
-library(urca)
+setdiff(rownames(pvals_tests)[which(pvals_tests$ADF>=0.05)], rownames(pvals_tests)[which(pvals_tests$PP>=0.05)])
+setdiff(rownames(pvals_tests)[which(pvals_tests$PP>=0.05)], rownames(pvals_tests)[which(pvals_tests$ADF>=0.05)])
+
+# Where do all Tests agree?
+rownames(pvals_tests)[which(stationarity[,1]==stationarity[,2] & stationarity[,2]==stationarity[,3])]
+# Where do all Tests agree that variable is non-stationary?
+rownames(pvals_tests)[which(stationarity[,1]==FALSE & stationarity[,2]==FALSE & stationarity[,3]==FALSE)]
+# Where do all Tests agree that variable is stationary?
+rownames(pvals_tests)[which(stationarity[,1]==TRUE & stationarity[,2]==TRUE & stationarity[,3]==TRUE)]
+# Tests do not detect non-stationarity on basis of seasonality, see:
+# https://stats.stackexchange.com/questions/225087/seasonal-data-deemed-stationary-by-adf-and-kpss-tests
+
+
+# Are some results different because of structural break?
+# Zivot and Andrews Unit Root Test
+# H_0: unit root process with drift that excludes exogenous structural change
+# H_1: depending on the model variant: trend stationary process that allows for a one time break in the level, the trend or both
 za.gnp <- ur.za(data.xts$DA_Price_DE)
 summary(za.gnp)
 
+plot(data.xts$DA_Price_DE)
+addEventLines(events = xts(x = 'Breakpoint', order.by = time(data.xts$DA_Price_DE)[za.gnp@bpoint]), lty = 2, col = 'red', lwd = 1)
 
 # Inspecting the variables where adf.test and pp.test differ in their outcomes
 # Luxembourg_export has a structural break @ 2017-06-28
@@ -396,7 +408,6 @@ pp.test(Luxembourg_export_clean)
 # Now the tests show the same result :)
 
 # Can we test for structural breaks in general? We can!
-library(strucchange)
 # DA_Price_DE
 DA_Price_DE <- data.xts$DA_Price_DE
 plot(DA_Price_DE)
@@ -729,3 +740,6 @@ plot.igraph(g, layout=layout.reingold.tilford, edge.arrow.size=0.01, vertex.size
 
 # How to combine unit root and stationary tests
 # https://stats.stackexchange.com/questions/30569/what-is-the-difference-between-a-stationary-test-and-a-unit-root-test/235916#235916
+
+# When VAR when VECM
+# https://www.researchgate.net/post/Is-it-necessary-for-variables-to-be-integrated-of-order-1-to-applying-VAR-model-or-I-can-use-it-if-variables-are-integrated-of-any-order
