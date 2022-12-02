@@ -257,11 +257,11 @@ row.names(pvals_shapiro_log)[which(pvals_shapiro_log[,1]>0.05)]
 
 # Standardizing data
 # histogram of non-standardized data (Example: Poland_export)
-hist(data.xts[,rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]], xlab = rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])], main = paste("Histogram of ", rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]), probability = TRUE)
+hist(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]], xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of ", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
 # histogram of standardized data (Example: Poland_export)
-standardized <- scale(data.xts[,rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]])
-hist(standardized, xlab = rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])], main = paste("Histogram of ", rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]), probability = TRUE)
-qqnorm(standardized, main=colnames(data.xts[,rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]]))
+standardized <- scale(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]])
+hist(standardized, xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of ", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
+qqnorm(standardized, main=colnames(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]]))
 qqline(rnorm(dim(data.xts)[1]))
 
 # Decomposition 
@@ -311,7 +311,7 @@ for (i in 1:dim(data.xts)[2]) {
 }
 
 
-# Tests
+# Stationarity Tests
 # https://stats.stackexchange.com/questions/88407/adf-test-pp-test-kpss-test-which-test-to-prefer
 # Unit root tests: ADF, PP
 # H_0: Unit root (equivalently, x is a non-stationary time series)
@@ -326,66 +326,88 @@ for (i in 1:dim(data.xts)[2]) {
 # How unit-root test and stationarity-test complement each other:
 # https://stats.stackexchange.com/questions/30569/what-is-the-difference-between-a-stationary-test-and-a-unit-root-test/235916#235916(I
 
-# Phillips-Perron Test when variables with zeros removed and log applied
-#pp_stationary_log <- data.frame(matrix(ncol = 1, nrow = length(colnames(non_negatives.xts))))
-#colnames(pp_stationary_log) <- "Stationary?"
-#rownames(pp_stationary_log) <- colnames(non_negatives.xts)
-#for (i in 1:dim(pp_stationary_log)[1]) {
-#  pp <- pp.test(log(non_negatives.xts[,i]))
-#  if (pp$p.value < 0.05) {
-#    pp_stationary[i,1] <- TRUE
-#  } else {
-#    pp_stationary[i,1] <- FALSE
-#  }
-#}
+# Log transforming a non-stationary variable can not make it stationary
 
-pvals_tests <- data.frame(matrix(ncol = 3, nrow = length(colnames(data.xts))))
-colnames(pvals_tests) <- c("ADF", "PP", "KPSS")
+pvals_tests <- data.frame(matrix(ncol = 7, nrow = length(colnames(data.xts))))
+colnames(pvals_tests) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
 rownames(pvals_tests) <- colnames(data.xts)
 for (i in 1:dim(pvals_tests)[1]) {
   adf <- adf.test(data.xts[,i])
   pvals_tests[i,1] <- adf$p.value
+  # removing first value to get no NA's
+  adf1 <- adf.test(diff(data.xts[,i], differences = 1)[-1])
+  pvals_tests[i,2] <- adf1$p.value
+  
   pp <- pp.test(data.xts[,i])
-  pvals_tests[i,2] <- pp$p.value
+  pvals_tests[i,3] <- pp$p.value
+  # removing first value to get no NA's
+  pp1 <- pp.test(diff(data.xts[,i], differences = 1)[-1])
+  pvals_tests[i,4] <- pp1$p.value
+  
   kpss <- kpss.test(data.xts[,i])
-  pvals_tests[i,3] <- kpss$p.value
+  pvals_tests[i,5] <- kpss$p.value
+  # removing first value to get no NA's
+  kpss2 <- kpss.test(diff(data.xts[,i], differences = 1)[-1])
+  pvals_tests[i,6] <- kpss2$p.value
+  # removing also second value to get no NA's
+  kpss3 <- kpss.test(diff(data.xts[,i], differences = 2)[-c(1, 2)])
+  pvals_tests[i,7] <- kpss3$p.value
 }
 
 sign.lvl <- 0.05
-stationarity <- data.frame(matrix(ncol = 3, nrow = length(colnames(data.xts))))
-colnames(stationarity) <- c("ADF: stationary?", "PP: stationary?", "KPSS: stationary?")
+stationarity <- data.frame(matrix(ncol = 7, nrow = length(colnames(data.xts))))
+colnames(stationarity) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
 rownames(stationarity) <- colnames(data.xts)
 for (i in 1:dim(stationarity)[1]) {
   if(pvals_tests[i,1] < sign.lvl){
-    stationarity[i,1] <- TRUE
+    stationarity[i,1] <- "stat"
   } else {
-    stationarity[i,1] <- FALSE
+    stationarity[i,1] <- "non-stat"
   }
   if(pvals_tests[i,2] < sign.lvl){
-    stationarity[i,2] <- TRUE
+    stationarity[i,2] <- "stat"
   } else {
-    stationarity[i,2] <- FALSE
+    stationarity[i,2] <- "non-stat"
   }
   if(pvals_tests[i,3] < sign.lvl){
-    stationarity[i,3] <- FALSE
+    stationarity[i,3] <- "stat"
   } else {
-    stationarity[i,3] <- TRUE
+    stationarity[i,3] <- "non-stat"
+  }
+  if(pvals_tests[i,4] < sign.lvl){
+    stationarity[i,4] <- "stat"
+  } else {
+    stationarity[i,4] <- "non-stat"
+  }
+  if(pvals_tests[i,5] < sign.lvl){
+    stationarity[i,5] <- "non-stat"
+  } else {
+    stationarity[i,5] <- "stat"
+  }
+  if(pvals_tests[i,6] < sign.lvl){
+    stationarity[i,6] <- "non-stat"
+  } else {
+    stationarity[i,6] <- "stat"
+  }
+  if(pvals_tests[i,7] < sign.lvl){
+    stationarity[i,7] <- "non-stat"
+  } else {
+    stationarity[i,7] <- "stat"
   }
 }
 
-# Results are different for PP and ADF when compared
-# Which ones are different?
-setdiff(rownames(pvals_tests)[which(pvals_tests$ADF>=0.05)], rownames(pvals_tests)[which(pvals_tests$PP>=0.05)])
-setdiff(rownames(pvals_tests)[which(pvals_tests$PP>=0.05)], rownames(pvals_tests)[which(pvals_tests$ADF>=0.05)])
+# Compare ADF and PP
+cat("---------", "PP != ADF", "---------", rownames(stationarity)[which(stationarity$ADF!=stationarity$PP)], "---------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF!=stationarity$PP)])), sep='\n')
 
-# Where do all Tests agree?
-rownames(pvals_tests)[which(stationarity[,1]==stationarity[,2] & stationarity[,2]==stationarity[,3])]
-# Where do all Tests agree that variable is non-stationary?
-rownames(pvals_tests)[which(stationarity[,1]==FALSE & stationarity[,2]==FALSE & stationarity[,3]==FALSE)]
-# Where do all Tests agree that variable is stationary?
-rownames(pvals_tests)[which(stationarity[,1]==TRUE & stationarity[,2]==TRUE & stationarity[,3]==TRUE)]
-# Tests do not detect non-stationarity on basis of seasonality, see:
+# Compare ADF, PP and KPSS
+cat("--------------------", "!(ADF == PP == KPSS)", "--------------------", rownames(stationarity)[which(stationarity$ADF!=stationarity$PP | stationarity$ADF!=stationarity$KPSS | stationarity$PP!=stationarity$KPSS)], "--------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF!=stationarity$PP | stationarity$ADF!=stationarity$KPSS | stationarity$PP!=stationarity$KPSS)])), sep='\n')
+cat("-----------------", "ADF == PP == KPSS", "-----------------", rownames(stationarity)[which(stationarity$ADF==stationarity$PP & stationarity$ADF==stationarity$KPSS & stationarity$PP==stationarity$KPSS)], "-----------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF==stationarity$PP & stationarity$ADF==stationarity$KPSS & stationarity$PP==stationarity$KPSS)])), sep='\n')
+cat("-------------------------", "ADF == PP == KPSS == stat", "-------------------------", rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")], "-------------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")])), sep='\n')
+cat("-----------------------------", "ADF == PP == KPSS == non-stat", "-----------------------------", rownames(stationarity)[which(stationarity$ADF=="non-stat" & stationarity$PP=="non-stat" & stationarity$KPSS=="non-stat")], "-----------------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF=="non-stat" & stationarity$PP=="non-stat" & stationarity$KPSS=="non-stat")])), sep='\n')
+
+# Unit-root-tests do not detect non-stationarity on basis of seasonality, see:
 # https://stats.stackexchange.com/questions/225087/seasonal-data-deemed-stationary-by-adf-and-kpss-tests
+
 
 
 # Are some results different because of structural break?
@@ -524,6 +546,14 @@ library(NlinTS)
 
 ### log-scale??? ###
 
+
+decomp_actual_load <- stats::decompose(ts(data.xts$actual_load, frequency = 365))
+plot(decomp_actual_load)
+# Seasonally Adjusting
+actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365) - decomp_actual_load$seasonal
+plot(actual_load_SeasonAdj)
+
+
 # optimal lag order of the unrestricted VAR
 opt_lag <- VARselect(data.xts, lag.max = 10, type = "const")
 opt_lag$selection 
@@ -534,49 +564,7 @@ no_lags <- as.numeric(opt_lag$selection[1])
 rk_sel <- lags.select(data.xts)
 summary(rk_sel)
 
-# p-values for PP-test (original data and after 1st difference)
-pp_pvals_diffs <- data.frame(matrix(ncol = 2, nrow = dim(data.xts)[2]))
-colnames(pp_pvals_diffs) <- c("p-value (original data)", "p-value (1st difference)")
-rownames(pp_pvals_diffs) <- colnames(data.xts)
-for (i in 1:dim(pp_pvals_diffs)[1]) {
-  pp <- pp.test(data.xts[,i])
-  pp_pvals_diffs[i,1] <- pp$p.value
-  # removing first value to get no NA's
-  pp2 <- pp.test(diff(data.xts[,i], differences = 1)[-1])
-  pp_pvals_diffs[i,2] <- pp2$p.value
-}
-# variables with p-value > 0.05 without differentiation (stationary)
-rownames(pp_pvals_diffs[which(pp_pvals_diffs$`p-value (original data)`>0.05),])
-# variables with p-value > 0.05 after 1st difference
-rownames(pp_pvals_diffs[which(pp_pvals_diffs$`p-value (1st difference)`>0.05),])
 
-
-# p-values for KPSS-test (original data and after 1st difference)
-# H_0: time series is stationary
-# p-value < 0.05 indicates non-stationarity
-kpss_pvals_diffs <- data.frame(matrix(ncol = 3, nrow = dim(data.xts)[2]))
-colnames(kpss_pvals_diffs) <- c("p-value (original data)", "p-value (1st difference)", "p-value (2nd difference)")
-rownames(kpss_pvals_diffs) <- colnames(data.xts)
-for (i in 1:dim(kpss_pvals_diffs)[1]) {
-  kpss <- kpss.test(data.xts[,i])
-  kpss_pvals_diffs[i,1] <- kpss$p.value
-  # removing first value to get no NA's
-  kpss2 <- kpss.test(diff(data.xts[,i], differences = 1)[-1])
-  kpss_pvals_diffs[i,2] <- kpss2$p.value
-  # removing second value to get no NA's
-  kpss3 <- kpss.test(diff(data.xts[,i], differences = 2)[-c(1, 2)])
-  kpss_pvals_diffs[i,3] <- kpss3$p.value
-}
-# variables with p-value > 0.05 without differentiation (stationary)
-rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (original data)`>0.05),])
-# variables with p-value < 0.05 without differentiation (not stationary)
-rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (original data)`<0.05),])
-# variables with p-value < 0.05 after 1st difference
-rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (1st difference)`<0.05),])
-# after 1st difference there are still nonstationary time series (regarding to KPSS)
-# variables with p-value < 0.05 after 2nd difference
-rownames(kpss_pvals_diffs[which(kpss_pvals_diffs$`p-value (2nd difference)`<0.05),])
-# None.
 
 
 # Johansen Procedure for VAR / Cointegration
