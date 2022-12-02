@@ -547,45 +547,91 @@ library(NlinTS)
 #### Causal modeling and inference for electricity markets ####
 ###############################################################
 
-### log-scale??? ###
-
-
-decomp_actual_load <- stats::decompose(ts(data.xts$actual_load, frequency = 365))
-plot(decomp_actual_load)
-# Seasonally Adjusting
-actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365) - decomp_actual_load$seasonal
-plot(actual_load_SeasonAdj)
-
-
-# optimal lag order of the unrestricted VAR
-opt_lag <- VARselect(data.xts, lag.max = 10, type = "const")
-opt_lag$selection 
-no_lags <- as.numeric(opt_lag$selection[1])
-
-# different function (don't know the exact difference but leads in general to different results...)
-# lag length + rank
-rk_sel <- lags.select(data.xts)
-summary(rk_sel)
-
-
-
-
-# Johansen Procedure for VAR / Cointegration
-# ! Critical values are only reported for systems with less than 11 variables and are taken from Osterwald-Lenum
-# spec = "transitory" leads to the VECM meant in the paper (see ?ca.jo)
-# ecdet = "const" for constant term in cointegration (intercept)
-# FURTHER DATA-REDUCTION NEEDED
-# => Try it out with a subset
-# Try a subset of variables which are I(1) (regarding to pp.test)
-subset.xts <- data.xts[, c("NG_TTF", "EUA_price", "COAL_API2")]
+# Log-transform
+# Depends heavily on the subset we choose (>0!)
+subset.xts <- log(data.xts[, c("NG_TTF", "EUA_price", "COAL_API2", "biomass_proudction")])
 names(subset.xts)
 plot(subset.xts)
-plot(log(subset.xts))
 corrplot(cor(subset.xts), method = "number")
 
-pvals_subset <- merge(pp_pvals_diffs[rownames(pp_pvals_diffs) %in% names(subset.xts), ], kpss_pvals_diffs[rownames(kpss_pvals_diffs) %in% names(subset.xts), ], by = 0, sort = FALSE)
-colnames(pvals_subset) <- c("Variable", "PP-Test: p-value (original data)", "PP-Test: p-value (1st difference)", "KPSS-Test: p-value (original data)", "KPSS-Test: p-value (1st difference)", "KPSS-Test: p-value (2nd difference)")
-pvals_subset <- pvals_subset[, c(1,2,4,3,5,6)]
+# Seasonally adjusting by subtracting seasonal term
+# is this okay in this way?
+for (i in 1:dim(subset.xts)[2]) {
+  s <- stats::decompose(ts(subset.xts[,i], frequency = 365))
+  subset.xts[,i] <- subset.xts[,i] - xts(s$seasonal, order.by = as.Date(data_raw[,1], "%d.%m.%y"))
+}
+plot(subset.xts)
+
+
+# p-values for tests (+differences)
+pvals_tests_subset <- data.frame(matrix(ncol = 7, nrow = length(colnames(subset.xts))))
+colnames(pvals_tests_subset) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
+rownames(pvals_tests_subset) <- colnames(subset.xts)
+for (i in 1:dim(pvals_tests_subset)[1]) {
+  adf <- adf.test(subset.xts[,i])
+  pvals_tests_subset[i,1] <- adf$p.value
+  # removing first value to get no NA's
+  adf1 <- adf.test(diff(subset.xts[,i], differences = 1)[-1])
+  pvals_tests_subset[i,2] <- adf1$p.value
+  
+  pp <- pp.test(subset.xts[,i])
+  pvals_tests_subset[i,3] <- pp$p.value
+  # removing first value to get no NA's
+  pp1 <- pp.test(diff(subset.xts[,i], differences = 1)[-1])
+  pvals_tests_subset[i,4] <- pp1$p.value
+  
+  kpss <- kpss.test(subset.xts[,i])
+  pvals_tests_subset[i,5] <- kpss$p.value
+  # removing first value to get no NA's
+  kpss2 <- kpss.test(diff(subset.xts[,i], differences = 1)[-1])
+  pvals_tests_subset[i,6] <- kpss2$p.value
+  # removing also second value to get no NA's
+  kpss3 <- kpss.test(diff(subset.xts[,i], differences = 2)[-c(1, 2)])
+  pvals_tests_subset[i,7] <- kpss3$p.value
+}
+
+
+sign.lvl_subset <- 0.05
+stationarity_subset <- data.frame(matrix(ncol = 7, nrow = length(colnames(subset.xts))))
+colnames(stationarity_subset) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
+rownames(stationarity_subset) <- colnames(subset.xts)
+for (i in 1:dim(stationarity_subset)[1]) {
+  if(pvals_tests_subset[i,1] < sign.lvl_subset){
+    stationarity_subset[i,1] <- "stat"
+  } else {
+    stationarity_subset[i,1] <- "non-stat"
+  }
+  if(pvals_tests_subset[i,2] < sign.lvl_subset){
+    stationarity_subset[i,2] <- "stat"
+  } else {
+    stationarity_subset[i,2] <- "non-stat"
+  }
+  if(pvals_tests_subset[i,3] < sign.lvl_subset){
+    stationarity_subset[i,3] <- "stat"
+  } else {
+    stationarity_subset[i,3] <- "non-stat"
+  }
+  if(pvals_tests_subset[i,4] < sign.lvl_subset){
+    stationarity_subset[i,4] <- "stat"
+  } else {
+    stationarity_subset[i,4] <- "non-stat"
+  }
+  if(pvals_tests_subset[i,5] < sign.lvl_subset){
+    stationarity_subset[i,5] <- "non-stat"
+  } else {
+    stationarity_subset[i,5] <- "stat"
+  }
+  if(pvals_tests_subset[i,6] < sign.lvl_subset){
+    stationarity_subset[i,6] <- "non-stat"
+  } else {
+    stationarity_subset[i,6] <- "stat"
+  }
+  if(pvals_tests_subset[i,7] < sign.lvl_subset){
+    stationarity_subset[i,7] <- "non-stat"
+  } else {
+    stationarity_subset[i,7] <- "stat"
+  }
+}
 
 
 # optimal lag order of the subset-VAR 
@@ -598,12 +644,28 @@ no_lags_subset <- as.numeric(opt_lag_subset$selection[1])
 # optimal order of lags for each indivual variable instead of together
 #lapply(subset.xts, VARselect)
 
+# different function (don't know the exact difference but leads in general to different results...)
+# lag length + rank
+rk_sel <- lags.select(subset.xts, lag.max = 25)
+summary(rk_sel)
+
+
+# Johansen Procedure for VAR / Cointegration
+# !! Critical values are only reported for systems with less than 11 variables and are taken from Osterwald-Lenum
+# spec = "transitory" leads to the VECM meant in the paper (see ?ca.jo)
+# ecdet = "const" for constant term in cointegration (intercept)
+
 # https://www.r-econometrics.com/timeseries/vecintro/
 coint_test <- ca.jo(subset.xts, type = "trace", ecdet = "const", spec = "transitory", K = no_lags_subset, dumvar = NULL)
 coint_test_noconst <- ca.jo(subset.xts, type = "trace", ecdet = "none", spec = "transitory", K = no_lags_subset, dumvar = NULL)
 coint_test_trend <- ca.jo(subset.xts, type = "trace", ecdet = "trend", spec = "transitory", K = no_lags_subset, dumvar = NULL)
 #summary(coint_test)
 # most important results
+beta <- coint_test@V
+alpha <- coint_test@W
+gammas <- coint_test@GAMMA
+# PI = Error-correction-term (matrix)
+pi <- alpha%*%t(beta) # is the same as coint_test@PI
 cbind(coint_test@teststat, coint_test@cval)
 # Interpretation:
 # r=0 tests for presence of cointegration
@@ -613,27 +675,28 @@ cbind(coint_test@teststat, coint_test@cval)
 # A cointegrating vector is a stationary linear combination of possibly nonstationary vector time-series components
 # https://www.quantstart.com/articles/Johansen-Test-for-Cointegrating-Time-Series-Analysis-in-R/
 
-# Check if cointegrated time series we get is stationary
-#cointegrated = coint_test@V["constant",1] + coint_test@V[1,1]*data.xts[,"forecast_residual_load"] + coint_test@V[2,1]*data.xts[,"COAL_API2"] + coint_test@V[3,1]*data.xts[,"NG_TTF"] + coint_test@V[4,1]*data.xts[,"EUA_price"]
-#plot(cointegrated, type="l")
-#adf.test(cointegrated)
-
-beta <- coint_test@V
-alpha <- coint_test@W
-gammas <- coint_test@GAMMA
-
-# Estimating VECM with VECM()
-VECM_VECM <- VECM(subset.xts, lag = no_lags_subset-1, r = 1, estim = "ML")
-# NOTE: VECM(): lag = k-1
-summary(VECM_VECM)
-residuals <- VECM_VECM$residuals
-
-
-# Estimating VECM with cajorls()
+# Estimating VECM with cajorls() and specified rank from teststatistic
 VECM_ca.jo <- cajorls(coint_test, r = 1)
 summary(VECM_ca.jo$rlm)
 VECM_ca.jo$beta
 VECM_ca.jo$rlm$coefficients
+
+# Check if cointegrated time series we get is stationary
+# normalized cointegration vectors
+VECM_ca.jo$beta
+# (1st) cointegration vector
+coint.ts1 <- VECM_ca.jo$beta[1,1]*subset.xts$NG_TTF + VECM_ca.jo$beta[2,1]*subset.xts$EUA_price +
+  VECM_ca.jo$beta[3,1]*subset.xts$COAL_API2 + VECM_ca.jo$beta[4,1]*subset.xts$biomass_proudction + VECM_ca.jo$beta[5,1]
+adf.test(coint.ts1)
+plot(coint.ts1)
+# not stationary => WHY??
+
+
+# Alternative: Estimating VECM with VECM()-function
+VECM_VECM <- VECM(subset.xts, lag = no_lags_subset-1, r = 1, estim = "ML")
+# NOTE: VECM(): lag = k-1
+summary(VECM_VECM)
+residuals <- VECM_VECM$residuals
 
 
 
@@ -690,19 +753,9 @@ subset.xts_std <- scale(subset.xts)
 plot(subset.xts_std)
 
 
-# normalized cointegration vectors
-VECM_ca.jo$beta
 
-# 1st cointegration vector
-coint.ts1 <- VECM_ca.jo$beta[1,1]*subset.xts$NG_TTF + VECM_ca.jo$beta[2,1]*subset.xts$EUA_price +
-  VECM_ca.jo$beta[3,1]*subset.xts$COAL_API2 + VECM_ca.jo$beta[4,1]
-adf.test(coint.ts1)
-plot(coint.ts1)
-# not stationary => WHY??
 
-# PI = Error-correction-term
-pi <- alpha%*%t(beta)
-# is the same as coint_test@PI
+
 
 
 # Procedure on p. 7 of paper
