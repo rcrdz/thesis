@@ -18,9 +18,8 @@ library(urca)
 library(strucchange)
 
 
-
-source("GrangerTests.R")
-source("ConditionalGrangerCausality.R")
+#source("GrangerTests.R")
+#source("ConditionalGrangerCausality.R")
 
 
 ###################
@@ -132,7 +131,7 @@ var_bool <- data.xts$physical_net_export != 0
 time_index <- min(which(var_bool == TRUE))
 plot(data.xts$physical_net_export)
 timepoint <- time(data.xts$physical_net_export)[time_index]
-addEventLines(events = xts(x = '', order.by = timepoint), lty = 2, col = 'tomato', lwd = 1.5)
+addEventLines(events = xts(x = 'first nonzero', order.by = timepoint), lty = 2, col = 'tomato', lwd = 1.5)
 
 # List: When is first nonzero entry
 first_nonzero <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
@@ -142,10 +141,9 @@ for (i in 1:dim(first_nonzero)[1]) {
   bool <- data.xts[,i] != 0
   first_nonzero[i,1] <- min(which(bool == TRUE))
 }
-# Number of variables which "start not at first date"
-sum(first_nonzero != 1) #14
-# Names of variables which "start not at first date"
-rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1]
+# Names of variables which "start later"
+cat("--------------------------", "VARIABLES 'STARTING LATER'", "--------------------------", rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1], "--------------------------", paste("total:", sum(first_nonzero != 1)), sep='\n')
+
 
 
 # Zero-inflated data
@@ -158,10 +156,10 @@ for (i in 1:dim(zeros_count)[1]) {
 }
 # Zero-inflated variables
 zero_infl_vars <- subset(zeros_count, `# of Zeros` != 0)
-rownames(zero_infl_vars)
+cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", rownames(zero_infl_vars), "-----------------------", paste("total:", dim(zero_infl_vars)[1]), sep='\n')
 # Non-Zero-inflated variables
 non_zero_infl_vars <- subset(zeros_count, `# of Zeros` == 0)
-rownames(non_zero_infl_vars)
+cat("---------------------------", "NOT ZERO-INFLATED VARIABLES", "---------------------------", rownames(non_zero_infl_vars), "---------------------------", paste("total:", dim(non_zero_infl_vars)[1]), sep='\n')
 
 # Histograms of zero-inflated variables (removed zeros before "start")
 for (i in 1:dim(zero_infl_vars)[1]) {
