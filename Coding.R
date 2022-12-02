@@ -794,11 +794,10 @@ colnames(B_null) <- names(subset.xts)
 # B_0: The instantaneous causal effects
 g <- graph_from_adjacency_matrix(
   B_null,
-  mode = "directed",
   weighted = TRUE
 )
-
-plot.igraph(g, layout=layout.reingold.tilford, edge.arrow.size=0.01, vertex.size = 5, vertex.label.cex = 1)
+p <- c(paste("        ", round(E(g)$weight[1],3)), paste("        ", round(E(g)$weight[2],3)))
+plot.igraph(g, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 10, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label=p, edge.label.color = "brown")
 
 
 # How to combine unit root and stationary tests
