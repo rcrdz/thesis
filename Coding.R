@@ -125,6 +125,9 @@ names(non_negatives.xts)
 # variables with also negative values
 negatives.xts <- data.xts[,! names(data.xts) %in% names(non_negatives.xts)]
 names(negatives.xts)
+# Positive valued variables (BUT: removed also the ones which only "start later")
+positives.xts = data.xts[,colSums(data.xts<=0)==0]
+names(positives.xts)
 
 # Which variables start later in time?
 # Example: physical_net_export
@@ -139,11 +142,11 @@ first_nonzero <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
 colnames(first_nonzero) <- "First nonzero index"
 rownames(first_nonzero) <- colnames(data.xts)
 for (i in 1:dim(first_nonzero)[1]) {
-  bool <- data.xts[,i] != 0
-  first_nonzero[i,1] <- min(which(bool == TRUE))
+  boolean <- data.xts[,i] != 0
+  first_nonzero[i,1] <- min(which(boolean == TRUE))
 }
 # Names of variables which "start later"
-cat("--------------------------", "VARIABLES 'STARTING LATER'", "--------------------------", rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1], "--------------------------", paste("total:", sum(first_nonzero != 1)), sep='\n')
+cat("--------------------------", "VARIABLES 'STARTING LATER'", "--------------------------", rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1], "--------------------------", paste("total:", sum(first_nonzero != 1), "/", dim(data.xts)[2]), sep='\n')
 
 
 
@@ -157,10 +160,10 @@ for (i in 1:dim(zeros_count)[1]) {
 }
 # Zero-inflated variables
 zero_infl_vars <- subset(zeros_count, `# of Zeros` != 0)
-cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", rownames(zero_infl_vars), "-----------------------", paste("total:", dim(zero_infl_vars)[1]), sep='\n')
+cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", rownames(zero_infl_vars), "-----------------------", paste("total:", dim(zero_infl_vars)[1], "/", dim(data.xts)[2]), sep='\n')
 # Non-Zero-inflated variables
 non_zero_infl_vars <- subset(zeros_count, `# of Zeros` == 0)
-cat("---------------------------", "NOT ZERO-INFLATED VARIABLES", "---------------------------", rownames(non_zero_infl_vars), "---------------------------", paste("total:", dim(non_zero_infl_vars)[1]), sep='\n')
+cat("---------------------------", "NOT ZERO-INFLATED VARIABLES", "---------------------------", rownames(non_zero_infl_vars), "---------------------------", paste("total:", dim(non_zero_infl_vars)[1], "/", dim(data.xts)[2]), sep='\n')
 
 # Histograms zero-inflated variables (removed zeros before "start")
 for (i in 1:dim(zero_infl_vars)[1]) {
@@ -397,13 +400,13 @@ for (i in 1:dim(stationarity)[1]) {
 }
 
 # Compare ADF and PP
-cat("---------", "PP != ADF", "---------", rownames(stationarity)[which(stationarity$ADF!=stationarity$PP)], "---------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF!=stationarity$PP)])), sep='\n')
+cat("---------", "PP != ADF", "---------", rownames(stationarity)[which(stationarity$ADF!=stationarity$PP)], "---------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF!=stationarity$PP)]), "/", dim(data.xts)[2]), sep='\n')
 
 # Compare ADF, PP and KPSS
-cat("--------------------", "!(ADF == PP == KPSS)", "--------------------", rownames(stationarity)[which(stationarity$ADF!=stationarity$PP | stationarity$ADF!=stationarity$KPSS | stationarity$PP!=stationarity$KPSS)], "--------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF!=stationarity$PP | stationarity$ADF!=stationarity$KPSS | stationarity$PP!=stationarity$KPSS)])), sep='\n')
-cat("-----------------", "ADF == PP == KPSS", "-----------------", rownames(stationarity)[which(stationarity$ADF==stationarity$PP & stationarity$ADF==stationarity$KPSS & stationarity$PP==stationarity$KPSS)], "-----------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF==stationarity$PP & stationarity$ADF==stationarity$KPSS & stationarity$PP==stationarity$KPSS)])), sep='\n')
-cat("-------------------------", "ADF == PP == KPSS == stat", "-------------------------", rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")], "-------------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")])), sep='\n')
-cat("-----------------------------", "ADF == PP == KPSS == non-stat", "-----------------------------", rownames(stationarity)[which(stationarity$ADF=="non-stat" & stationarity$PP=="non-stat" & stationarity$KPSS=="non-stat")], "-----------------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF=="non-stat" & stationarity$PP=="non-stat" & stationarity$KPSS=="non-stat")])), sep='\n')
+cat("--------------------", "!(ADF == PP == KPSS)", "--------------------", rownames(stationarity)[which(stationarity$ADF!=stationarity$PP | stationarity$ADF!=stationarity$KPSS | stationarity$PP!=stationarity$KPSS)], "--------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF!=stationarity$PP | stationarity$ADF!=stationarity$KPSS | stationarity$PP!=stationarity$KPSS)]), "/", dim(data.xts)[2]), sep='\n')
+cat("-----------------", "ADF == PP == KPSS", "-----------------", rownames(stationarity)[which(stationarity$ADF==stationarity$PP & stationarity$ADF==stationarity$KPSS & stationarity$PP==stationarity$KPSS)], "-----------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF==stationarity$PP & stationarity$ADF==stationarity$KPSS & stationarity$PP==stationarity$KPSS)]), "/", dim(data.xts)[2]), sep='\n')
+cat("-------------------------", "ADF == PP == KPSS == stat", "-------------------------", rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")], "-------------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")]), "/", dim(data.xts)[2]), sep='\n')
+cat("-----------------------------", "ADF == PP == KPSS == non-stat", "-----------------------------", rownames(stationarity)[which(stationarity$ADF=="non-stat" & stationarity$PP=="non-stat" & stationarity$KPSS=="non-stat")], "-----------------------------", paste("total:", length(rownames(stationarity)[which(stationarity$ADF=="non-stat" & stationarity$PP=="non-stat" & stationarity$KPSS=="non-stat")]), "/", dim(data.xts)[2]), sep='\n')
 
 # Unit-root-tests do not detect non-stationarity on basis of seasonality, see:
 # https://stats.stackexchange.com/questions/225087/seasonal-data-deemed-stationary-by-adf-and-kpss-tests
