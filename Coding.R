@@ -425,12 +425,14 @@ cat("-----------------------------", "ADF == PP == KPSS == non-stat", "---------
 
 
 # Are some results different because of structural break?
+# chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://www.zeileis.org/papers/OeSG-2001.pdf
+# https://github.com/julzerinos/r-structural-breaks-with-ml
+
 # Zivot and Andrews Unit Root Test
 # H_0: unit root process with drift that excludes exogenous structural change
 # H_1: depending on the model variant: trend stationary process that allows for a one time break in the level, the trend or both
 za.gnp <- ur.za(data.xts$DA_Price_DE)
 summary(za.gnp)
-
 plot(data.xts$DA_Price_DE)
 addEventLines(events = xts(x = 'Breakpoint', order.by = time(data.xts$DA_Price_DE)[za.gnp@bpoint]), lty = 2, col = 'red', lwd = 1)
 
@@ -563,8 +565,8 @@ library(NlinTS)
 subset.xts <- log(data.xts[, c("NG_TTF", "EUA_price", "COAL_API2", "biomass_proudction")])
 names(subset.xts)
 plot(subset.xts)
-corrplot(cor(subset.xts), method = "number")
-
+corrplot(cor(subset.xts), type = "upper", method = "color",
+         insig = "pch", tl.cex = 0.8, tl.col = "black", tl.srt = 45)
 # Seasonally adjusting by subtracting seasonal term
 # is this okay in this way or do we need a function describing the seasonality?
 for (i in 1:dim(subset.xts)[2]) {
@@ -733,7 +735,8 @@ rownames(pvals_res) <- c(colnames(subset.xts),"Multivariate")
 pvals_res[1,1] <- as.numeric(norm_test$jb.uni$`resids of NG_TTF`$p.value)
 pvals_res[2,1] <- as.numeric(norm_test$jb.uni$`resids of EUA_price`$p.value)
 pvals_res[3,1] <- as.numeric(norm_test$jb.uni$`resids of COAL_API2`$p.value)
-pvals_res[4,1] <- as.numeric(norm_test$jb.mul$JB$p.value)
+pvals_res[4,1] <- as.numeric(norm_test$jb.uni$`resids of biomass_proudction`$p.value)
+pvals_res[5,1] <- as.numeric(norm_test$jb.mul$JB$p.value)
 # All values <.05 => residuals not normally distr. (also not multivariate normal)
 # [Geht bestimmt schöner zu coden..]
 
