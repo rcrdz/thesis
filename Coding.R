@@ -14,9 +14,11 @@ library(strucchange)
 library(pcalg)
 library(igraph)
 library(seasonal)
+library(seastests)
 library(urca)
 library(strucchange)
 library(corrplot)
+library(tsbox)
 
 
 #source("GrangerTests.R")
@@ -35,6 +37,12 @@ names(data_raw)
 #names(data_raw)[1] <- 'Date' # Not necessary anymore i guess..
 
 
+###############################
+### Converting to .xts-data ###
+###############################
+data_raw.xts <- xts(data_raw[,-1], order.by = as.Date(data_raw[,1], "%d.%m.%y"))
+
+
 ##############################
 ### Converting to .ts-data ###
 ##############################
@@ -42,15 +50,9 @@ names(data_raw)
 #data_conv <- data_raw
 #data_conv %<>%
 #  mutate(Date = as.Date(Date, format= "%d.%m.%y"))
-
 # Converting to .ts-data # yearly seasonality
-#DA_Price_DE.ts <- ts(data_conv$DA_Price_DE, start = c(as.numeric(format(data_conv$Date[1], "%Y")), as.numeric(format(data_conv$Date[1], "%j"))), frequency = 365)
-
-
-###############################
-### Converting to .xts-data ###
-###############################
-data_raw.xts <- xts(data_raw[,-1], order.by = as.Date(data_raw[,1], "%d.%m.%y"))
+#data.ts <- ts(data_conv, start = c(as.numeric(format(data_conv$Date[1], "%Y")), as.numeric(format(data_conv$Date[1], "%j"))), frequency = 365)
+data.ts <-ts_ts(data.xts)
 
 
 #####################
@@ -255,9 +257,6 @@ row.names(pvals_shapiro_log)[which(pvals_shapiro_log[,1]>0.05)]
 
 
 
-
-
-
 # Standardizing data
 # histogram of non-standardized data (Example: Poland_export)
 hist(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]], xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of ", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
@@ -267,21 +266,33 @@ hist(standardized, xlab = rownames(pvals_normality)[which.max(pvals_normality[,1
 qqnorm(standardized, main=colnames(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]]))
 qqline(rnorm(dim(data.xts)[1]))
 
+
+###################
+### Seasonality ###
+###################
+
 # Decomposition 
 # frequency = 365 means: 365 obs. until season repeats (yearly seasonality)
 # Example: forecast_residual_load
-decomp_actual_load <- stats::decompose(ts(data.xts$actual_load, frequency = 365))
+plot(data.xts$actual_load)
+decomp_actual_load <- stats::decompose(ts(data.xts$actual_load, frequency = 365.25))
 plot(decomp_actual_load)
 # Seasonally Adjusting
-actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365) - decomp_actual_load$seasonal
-plot(actual_load_SeasonAdj)
+actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365.25) - decomp_actual_load$seasonal
+plot(actual_load_SeasonAdj, main = paste("Deseasonalized", colnames(data.xts$actual_load)))
 
-stlm <- stl(ts(data_raw$actual_load, frequency = 365), s.window = "periodic")
-plot(stlm)
+#stlm <- stl(ts(data_raw$actual_load, frequency = 365.25), s.window = "periodic")
+#plot(stlm)
 
-seasonplot(ts(data_raw$actual_load, frequency = 365))
+seasonplot(ts(data_raw$actual_load, frequency = 365.25))
 
-seasonal
+seasonality <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
+colnames(seasonality) <- "Seasonal"
+rownames(seasonality) <- colnames(data.xts)
+for (i in 1:dim(seasonality)[1]) {
+  seasonality[i,1] <- isSeasonal(data.xts[,i], test = "combined")
+}
+
 
 
 ####################
@@ -555,10 +566,13 @@ plot(subset.xts)
 corrplot(cor(subset.xts), method = "number")
 
 # Seasonally adjusting by subtracting seasonal term
-# is this okay in this way?
+# is this okay in this way or do we need a function describing the seasonality?
 for (i in 1:dim(subset.xts)[2]) {
-  s <- stats::decompose(ts(subset.xts[,i], frequency = 365))
-  subset.xts[,i] <- subset.xts[,i] - xts(s$seasonal, order.by = as.Date(data_raw[,1], "%d.%m.%y"))
+  plot(stats::decompose(ts(subset.xts[,i], frequency = 365.25)))
+}
+for (i in 1:dim(subset.xts)[2]) {
+  s <- stats::decompose(ts(subset.xts[,i], frequency = 365.25))
+  subset.xts[,i] <- xts(seasadj(s), order.by = as.Date(data_raw[,1], "%d.%m.%y"))
 }
 plot(subset.xts)
 
