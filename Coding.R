@@ -16,6 +16,7 @@ library(igraph)
 library(seasonal)
 library(urca)
 library(strucchange)
+library(corrplot)
 
 
 #source("GrangerTests.R")
@@ -118,7 +119,7 @@ plot(data.xts[,27:35], main = "Power production from different sources")
 # Variables with also negative values:
 #vals_greater_zero$var[vals_greater_zero$greater_zero == FALSE]
 
-# It is also way easier to get the non-negatives than above
+# It is way easier to get the non-negatives than above
 non_negatives.xts = data.xts[,colSums(data.xts<0)==0]
 names(non_negatives.xts)
 # variables with also negative values
@@ -161,61 +162,52 @@ cat("-----------------------", "ZERO-INFLATED VARIABLES", "---------------------
 non_zero_infl_vars <- subset(zeros_count, `# of Zeros` == 0)
 cat("---------------------------", "NOT ZERO-INFLATED VARIABLES", "---------------------------", rownames(non_zero_infl_vars), "---------------------------", paste("total:", dim(non_zero_infl_vars)[1]), sep='\n')
 
-# Histograms of zero-inflated variables (removed zeros before "start")
+# Histograms zero-inflated variables (removed zeros before "start")
 for (i in 1:dim(zero_infl_vars)[1]) {
   hist(data.xts[first_nonzero[rownames(zero_infl_vars)[i],]:dim(data.xts)[1], rownames(zero_infl_vars)[i]], xlab = rownames(zero_infl_vars)[i], main = paste("Histogram of ", rownames(zero_infl_vars)[i]), probability = TRUE)
 }
 
-# Histograms of "non-zero-inflated" variables (removed zeros before "start")
+# Histograms "non-zero-inflated" variables (removed zeros before "start")
 for (i in 1:dim(non_zero_infl_vars)[1]) {
   hist(data.xts[first_nonzero[rownames(non_zero_infl_vars)[i],]:dim(data.xts)[1], rownames(non_zero_infl_vars)[i]], xlab = rownames(non_zero_infl_vars)[i], main = paste("Histogram of ", rownames(non_zero_infl_vars)[i]), probability = TRUE)
 }
 
-# Which columns are zero-inflated? #Different approach than above
-#zero_inf <- data %>% 
-#  select_if(function(col) length(which(col==0)) > 7)
-#names(zero_inf)
-#zero_inf <- select(zero_inf, -c(DayofWeek, Is_Weekday, Holiday))
-#zero_inf <- cbind(data[,1], zero_inf)
-#zero_inf.xts <- xts(zero_inf[,-1], order.by = as.Date(zero_inf[,1], "%d.%m.%y"))
-#colSums(zero_inf.xts==0) # # of zeros in each column
-
-
-# Covariance matrix (with lags)
-nl <- 2 # number of lags
-data_with_lags <- embed(as.matrix(data.xts), nl+1) #produce a matrix with M columns containing the original series and lagged versions of it
-names <- colnames(data.xts)
-ndfs <- paste(rep(names,nl), "[t-", rep(1:nl, each=ncol(data.xts)), "]", sep = "")
-colnames(data_with_lags) <- c(names, ndfs)
-cov_matrix_with_lags <- cov(data_with_lags)
-corr_matrix_with_lags <- cov2cor(cov_matrix_with_lags) # Correlation matrix
-which(corr_matrix_with_lags > 0.9, arr.ind = T) # which entries are >0.7?
-#corr_matrix_with_lags[which(corr_matrix_with_lags <0.9)] <- 0
-# auxiliary matrix to get variables with highest correlation
-auxiliary_matrix1 <- corr_matrix_with_lags
-auxiliary_matrix1[which(auxiliary_matrix1 == 1)] <- 0
-s <- which(auxiliary_matrix1 == max(auxiliary_matrix1), arr.ind = TRUE) # index of maximal value in matrix
-rownames(corr_matrix_with_lags)[s[1]]
-colnames(corr_matrix_with_lags)[s[2]] #NG_storage is highly correlated to its 1st lag
-
 
 # Correlation matrix (without lags)
-corr_matrix_no_lags <- cor(data.xts)
-corr_matrix_no_lags[which(corr_matrix_no_lags == 1)] <- 0
-s2 <- which(corr_matrix_no_lags == max(corr_matrix_no_lags), arr.ind = TRUE)
-# find the 10 largest values
-x <- which(corr_matrix_no_lags >= sort(corr_matrix_no_lags, decreasing = T)[10], arr.ind = T)
-# determine the order of the 10 largest values in decreasing order
-x.order <- order(corr_matrix_no_lags[x], decreasing = T)
-x[x.order, ]
-# Plot the ones with highest correlation
-plot(data.xts$solar_production, main = "solar_production and GHI") # example of 2 correlated time series
-lines(data.xts$GHI, col = "red") # Plot of the highly correlated variables
-# It turns out that (obviously) NG_CleanPrice and NG_TTF is highly correlated
+cor_threshold <- 0.9
 
-# Plot of another two highly correlated time series (solar_production and GHI)
-plot(data.xts$solar_production, main = "Solar production and GHI")
-lines(data.xts$GHI, col = "red")
+cor_matrix <- cor(data.xts)
+cat("--------------------------------", "Range of Correlations (w/o lags)", "--------------------------------", range(cor_matrix[cor_matrix<1]), sep='\n')
+cor_matrix_triang <- cor_matrix
+cor_matrix_triang[lower.tri(cor_matrix, diag=TRUE)] <- 0 # make upper triangular matrix
+high_cor <- subset(as.data.frame.table(cor_matrix_triang), abs(Freq) > cor_threshold)
+colnames(high_cor)[3] <- "Corr"
+high_cor <- high_cor[order(-high_cor$Corr),]
+rownames(high_cor) <- c()
+cat("---------------------", "Top 5 corr (w/o lags)", "---------------------", sep='\n')
+print(high_cor[1:5,])
+
+
+# Covariance + correlation matrix (with lags)
+nl <- 2 # number of lags
+data_with_lags <- embed(as.matrix(data.xts), nl+1) #produce a matrix with M columns containing the original series and lagged versions of it
+ndfs <- paste(rep(colnames(data.xts),nl), "[t-", rep(1:nl, each=ncol(data.xts)), "]", sep = "")
+colnames(data_with_lags) <- c(colnames(data.xts), ndfs)
+cov_matrix_with_lags <- cov(data_with_lags)
+
+cor_matrix_with_lags <- cov2cor(cov_matrix_with_lags) # Correlation matrix
+cat("-------------------------------", "Range of Correlations (w/ lags)", "-------------------------------", range(cor_matrix_with_lags[cor_matrix_with_lags<1]), sep='\n')
+
+cor_matrix_with_lags_triang <- cor_matrix_with_lags
+cor_matrix_with_lags_triang[lower.tri(cor_matrix_with_lags, diag=TRUE)] <- 0 # make upper triangular matrix
+
+high_cor_with_lags <- subset(as.data.frame.table(cor_matrix_with_lags_triang), abs(Freq) > cor_threshold)
+colnames(high_cor_with_lags)[3] <- "Corr"
+high_cor_with_lags <- high_cor_with_lags[order(-high_cor_with_lags$Corr),]
+rownames(high_cor_with_lags) <- c()
+cat("--------------------", "Top 5 corr (w/ lags)", "--------------------", sep='\n')
+print(high_cor_with_lags[1:5,])
+#unique(as.vector(as.matrix(high_cor_with_lags[,1:2])))
 
 
 # QQ-plots (Example: DA_Price_DE)
@@ -224,41 +216,52 @@ qqline(rnorm(dim(data.xts)[1]))
 qqPlot(data.xts$DA_Price_DE)
 
 
-# Shapiro-Wilk-Test (Test for Normality)
+# Normality tests
+# Shapiro-Wilk-Test
 # H_0: Variable is normally distributed
 # p-value not >0.05 -> significantly different from normal distribution
-p_values_shapiro <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
-colnames(p_values_shapiro) <- "p-values of Shapiro-Wilk-Test"
-rownames(p_values_shapiro) <- colnames(data.xts)
-for (i in 1:dim(p_values_shapiro)[1]) {
+# Jarque-Bera test
+# H_O: normality
+
+pvals_normality <- data.frame(matrix(ncol = 2, nrow = dim(data.xts)[2]))
+colnames(pvals_normality) <- c("pvals Shapiro-Wilk", "pvals Jarque-Bera")
+rownames(pvals_normality) <- colnames(data.xts)
+for (i in 1:dim(pvals_normality)[1]) {
   t <- shapiro.test(as.numeric(data.xts[,i]))
-  p_values_shapiro[i,1] <- t$p.value
+  pvals_normality[i,1] <- t$p.value
+  s <- jarque.bera.test(as.numeric(data.xts[,i]))
+  pvals_normality[i,2] <- s$p.value
 }
-# none of the variables is Gaussian (atm)
-row.names(p_values_shapiro)[which(p_values_shapiro[,1]>0.05)]
-# variable with highest p-value and its histogram
-rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]
+# none of the variables is Gaussian (Shapiro-Wilk)
+row.names(pvals_normality)[which(pvals_normality[,1]>0.05)]
+# variable with highest p-value and its histogram (Shapiro-Wilk)
+rownames(pvals_normality)[which.max(pvals_normality[,1])]
 hist(data.xts$Poland_export, xlab = "Poland_export", main = paste("Histogram of Poland_export"), probability = TRUE)
 # alternative: ks.test(as.numeric(data.xts[,76]), "pnorm") (Kolmogorov-Smirnov-Test)
 
 # Are the non-zero variables Gaussian after applying log-transform?
-p_values_shapiro_log <- data.frame(matrix(ncol = 1, nrow = dim(non_negatives.xts)[2]))
-colnames(p_values_shapiro_log) <- "p-values of Shapiro-Wilk-Test"
-rownames(p_values_shapiro_log) <- colnames(non_negatives.xts)
-for (i in 1:dim(p_values_shapiro_log)[1]) {
+pvals_shapiro_log <- data.frame(matrix(ncol = 1, nrow = dim(non_negatives.xts)[2]))
+colnames(pvals_shapiro_log) <- "p-values of Shapiro-Wilk-Test"
+rownames(pvals_shapiro_log) <- colnames(non_negatives.xts)
+for (i in 1:dim(pvals_shapiro_log)[1]) {
   t <- shapiro.test(log(as.numeric(non_negatives.xts[,i])))
-  p_values_shapiro_log[i,1] <- t$p.value
+  pvals_shapiro_log[i,1] <- t$p.value
 }
 # changes not that much..
-row.names(p_values_shapiro_log)[which(p_values_shapiro_log[,1]>0.05)]
+row.names(pvals_shapiro_log)[which(pvals_shapiro_log[,1]>0.05)]
+
+
+
+
+
 
 # Standardizing data
 # histogram of non-standardized data (Example: Poland_export)
-hist(data.xts[,rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]], xlab = rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])], main = paste("Histogram of ", rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]), probability = TRUE)
+hist(data.xts[,rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]], xlab = rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])], main = paste("Histogram of ", rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]), probability = TRUE)
 # histogram of standardized data (Example: Poland_export)
-standardized <- scale(data.xts[,rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]])
-hist(standardized, xlab = rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])], main = paste("Histogram of ", rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]), probability = TRUE)
-qqnorm(standardized, main=colnames(data.xts[,rownames(p_values_shapiro)[which.max(p_values_shapiro[,1])]]))
+standardized <- scale(data.xts[,rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]])
+hist(standardized, xlab = rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])], main = paste("Histogram of ", rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]), probability = TRUE)
+qqnorm(standardized, main=colnames(data.xts[,rownames(pvals_shapiro)[which.max(pvals_shapiro[,1])]]))
 qqline(rnorm(dim(data.xts)[1]))
 
 # Decomposition 
@@ -587,6 +590,7 @@ subset.xts <- data.xts[, c("NG_TTF", "EUA_price", "COAL_API2")]
 names(subset.xts)
 plot(subset.xts)
 plot(log(subset.xts))
+corrplot(cor(subset.xts), method = "number")
 
 pvals_subset <- merge(pp_pvals_diffs[rownames(pp_pvals_diffs) %in% names(subset.xts), ], kpss_pvals_diffs[rownames(kpss_pvals_diffs) %in% names(subset.xts), ], by = 0, sort = FALSE)
 colnames(pvals_subset) <- c("Variable", "PP-Test: p-value (original data)", "PP-Test: p-value (1st difference)", "KPSS-Test: p-value (original data)", "KPSS-Test: p-value (1st difference)", "KPSS-Test: p-value (2nd difference)")
@@ -741,3 +745,7 @@ plot.igraph(g, layout=layout.reingold.tilford, edge.arrow.size=0.01, vertex.size
 
 # When VAR when VECM
 # https://www.researchgate.net/post/Is-it-necessary-for-variables-to-be-integrated-of-order-1-to-applying-VAR-model-or-I-can-use-it-if-variables-are-integrated-of-any-order
+
+
+# for nice correlation plots:
+#corrplot(corr_matrix_with_lags, method="number")
