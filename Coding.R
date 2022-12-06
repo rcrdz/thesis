@@ -20,6 +20,7 @@ library(strucchange)
 library(corrplot)
 library(tsbox)
 library(readxl)
+library(ggplot2)
 
 
 #source("GrangerTests.R")
@@ -29,9 +30,11 @@ library(readxl)
 ###################
 ### Import data ###
 ###################
-#data_raw <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
+csvdata <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
 exceldata <- read_excel("working_db_Trafo5_Daily_Lagged.xlsx")
 data_raw <- data.frame(exceldata)
+data_raw$Date <- format(as.POSIXct(data_raw$Date, tz = "UTC"),
+                        format = "%Y-%m-%d")
 dim(data_raw)
 head(data_raw)
 
@@ -40,12 +43,12 @@ names(data_raw)
 #names(data_raw)[1] <- 'Date' # Not necessary anymore i guess..
 
 
-###############################
-### Converting to .xts-data ###
-###############################
+##########################
+### Converting to .xts ###
+##########################
 # Date formats: https://www.ibm.com/docs/en/cmofm/9.0.0?topic=SSEPCD_9.0.0/com.ibm.ondemand.mp.doc/arsa0257.html
 # ?strptime, as.Date(data_raw[,1], "%Y-%m-%d")
-data_raw.xts <- xts(data_raw[,-1], order.by = data_raw[,1])
+data_raw.xts <- xts(data_raw[,-1], order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
 
 
 #####################
@@ -275,6 +278,13 @@ qqline(rnorm(dim(data.xts)[1]))
 ###################
 ### Seasonality ###
 ###################
+# Test for Seasonality (not so sure about this..)
+seasonality <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
+colnames(seasonality) <- "Seasonal"
+rownames(seasonality) <- colnames(data.xts)
+for (i in 1:dim(seasonality)[1]) {
+  seasonality[i,1] <- isSeasonal(data.xts[,i], test = "combined")
+}
 
 # Decomposition 
 # frequency = 365 means: 365 obs. until season repeats (yearly seasonality)
@@ -291,13 +301,31 @@ plot(actual_load_SeasonAdj, main = paste("Deseasonalized", colnames(data.xts$act
 
 seasonplot(ts(data_raw$actual_load, frequency = 365.25))
 
-seasonality <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(seasonality) <- "Seasonal"
-rownames(seasonality) <- colnames(data.xts)
-for (i in 1:dim(seasonality)[1]) {
-  seasonality[i,1] <- isSeasonal(data.xts[,i], test = "combined")
+
+# Estimating seasonality-components with Fourier (Energy paper)
+t <- seq(from = 1, to = dim(data.xts)[1], by = 1)
+my_lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[,x] ~ sin(2*pi*t/365.25) + cos(2*pi*t/365.25) + sin(2*pi*2*t/365.25) + cos(2*pi*2*t/365.25)))
+fitted_vals <- sapply(my_lms, fitted)
+fitted_vals <- xts(fitted_vals, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+colnames(fitted_vals) <- colnames(data.xts)
+
+ggplot() + 
+  geom_line(data = data.xts, aes(x = time(data.xts), y = forecast_load), color = "black") +
+  geom_line(data = fitted_vals, aes(x = time(data.xts), y = forecast_load), color = "red") +
+  xlab('Date') +
+  ylab(colnames(data.xts$DA_Price_DE))
+
+for(i in 1:dim(data.xts)[2]) {  
+  abc <- ggplot() + 
+    geom_line(data = data.xts, aes(x = time(data.xts), y = data.xts[,i]), color = "black") +
+    geom_line(data = fitted_vals, aes(x = time(data.xts), y = fitted_vals[,i]), color = "red") +
+    xlab('Date') +
+    ylab('Hi')
+  print(abc)
+  #Sys.sleep(2)
 }
 
+seasonadj.xts <- data.xts-fitted_vals
 
 
 ####################
@@ -579,7 +607,7 @@ for (i in 1:dim(subset.xts)[2]) {
 }
 for (i in 1:dim(subset.xts)[2]) {
   s <- stats::decompose(ts(subset.xts[,i], frequency = 365.25))
-  subset.xts[,i] <- xts(seasadj(s), order.by = as.Date(data_raw[,1], "%d.%m.%y"))
+  subset.xts[,i] <- xts(seasadj(s), order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
 }
 plot(subset.xts)
 
@@ -686,7 +714,7 @@ beta <- coint_test@V
 alpha <- coint_test@W
 gammas <- coint_test@GAMMA
 # PI = Error-correction-term (matrix)
-pi <- alpha%*%t(beta) # is the same as coint_test@PI
+Pi <- alpha%*%t(beta) # is the same as coint_test@PI
 cbind(coint_test@teststat, coint_test@cval)
 # Interpretation:
 # r=0 tests for presence of cointegration
