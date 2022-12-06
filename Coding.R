@@ -30,7 +30,7 @@ library(ggplot2)
 ###################
 ### Import data ###
 ###################
-csvdata <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
+#csvdata <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
 exceldata <- read_excel("working_db_Trafo5_Daily_Lagged.xlsx")
 data_raw <- data.frame(exceldata)
 data_raw$Date <- format(as.POSIXct(data_raw$Date, tz = "UTC"),
@@ -303,29 +303,33 @@ seasonplot(ts(data_raw$actual_load, frequency = 365.25))
 
 
 # Estimating seasonality-components with Fourier (Energy paper)
-t <- seq(from = 1, to = dim(data.xts)[1], by = 1)
-my_lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[,x] ~ sin(2*pi*t/365.25) + cos(2*pi*t/365.25) + sin(2*pi*2*t/365.25) + cos(2*pi*2*t/365.25)))
+#t <- seq(from = 1, to = dim(data.xts)[1], by = 1)
+my_lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[first_nonzero[x,1]:dim(data.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + sin(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
 fitted_vals <- sapply(my_lms, fitted)
-fitted_vals <- xts(fitted_vals, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+for(i in 1:dim(data.xts)[2]){
+  if (length(fitted_vals[[i]]) < 2481){
+    fitted_vals[[i]] <- c(rep(0, first_nonzero[i,1]-1), fitted_vals[[i]])
+  }
+}
+fitted_vals <- data.frame(fitted_vals)
 colnames(fitted_vals) <- colnames(data.xts)
+fitted_vals <- xts(fitted_vals, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
 
-ggplot() + 
-  geom_line(data = data.xts, aes(x = time(data.xts), y = forecast_load), color = "black") +
-  geom_line(data = fitted_vals, aes(x = time(data.xts), y = forecast_load), color = "red") +
-  xlab('Date') +
-  ylab(colnames(data.xts$DA_Price_DE))
 
 for(i in 1:dim(data.xts)[2]) {  
   abc <- ggplot() + 
-    geom_line(data = data.xts, aes(x = time(data.xts), y = data.xts[,i]), color = "black") +
-    geom_line(data = fitted_vals, aes(x = time(data.xts), y = fitted_vals[,i]), color = "red") +
+    geom_line(data = data.xts, aes(x = time(data.xts), y = as.numeric(data.xts[,i])), color = "black") +
+    geom_line(data = fitted_vals, aes(x = time(data.xts), y = as.numeric(fitted_vals[,i])), color = "red") +
     xlab('Date') +
-    ylab('Hi')
+    ylab(colnames(data.xts)[i])
   print(abc)
   #Sys.sleep(2)
 }
 
-seasonadj.xts <- data.xts-fitted_vals
+seasonadj.xts <- data.xts - fitted_vals
 
 
 ####################
