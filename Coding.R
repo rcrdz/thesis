@@ -19,6 +19,7 @@ library(urca)
 library(strucchange)
 library(corrplot)
 library(tsbox)
+library(readxl)
 
 
 #source("GrangerTests.R")
@@ -28,7 +29,9 @@ library(tsbox)
 ###################
 ### Import data ###
 ###################
-data_raw <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
+#data_raw <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
+exceldata <- read_excel("working_db_Trafo5_Daily_Lagged.xlsx")
+data_raw <- data.frame(exceldata)
 dim(data_raw)
 head(data_raw)
 
@@ -40,19 +43,9 @@ names(data_raw)
 ###############################
 ### Converting to .xts-data ###
 ###############################
-data_raw.xts <- xts(data_raw[,-1], order.by = as.Date(data_raw[,1], "%d.%m.%y"))
-
-
-##############################
-### Converting to .ts-data ###
-##############################
-# Converting Date from character representation to class 'Date'
-#data_conv <- data_raw
-#data_conv %<>%
-#  mutate(Date = as.Date(Date, format= "%d.%m.%y"))
-# Converting to .ts-data # yearly seasonality
-#data.ts <- ts(data_conv, start = c(as.numeric(format(data_conv$Date[1], "%Y")), as.numeric(format(data_conv$Date[1], "%j"))), frequency = 365)
-data.ts <-ts_ts(data.xts)
+# Date formats: https://www.ibm.com/docs/en/cmofm/9.0.0?topic=SSEPCD_9.0.0/com.ibm.ondemand.mp.doc/arsa0257.html
+# ?strptime, as.Date(data_raw[,1], "%Y-%m-%d")
+data_raw.xts <- xts(data_raw[,-1], order.by = data_raw[,1])
 
 
 #####################
@@ -69,6 +62,18 @@ data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("renewables_fo
 # Remove 'Total_production' b/c of redundancy
 data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("Total_production", names(data.xts))])]
 # Important variables: 'forecast_residual_load', 'COAL_API2', 'NG_TTF', 'EUA_price'
+
+
+##############################
+### Converting to .ts-data ###
+##############################
+# Converting Date from character representation to class 'Date'
+#data_conv <- data_raw
+#data_conv %<>%
+#  mutate(Date = as.Date(Date, format= "%d.%m.%y"))
+# Converting to .ts-data # yearly seasonality
+#data.ts <- ts(data_conv, start = c(as.numeric(format(data_conv$Date[1], "%Y")), as.numeric(format(data_conv$Date[1], "%j"))), frequency = 365)
+data.ts <-ts_ts(data.xts)
 
 
 ################
@@ -368,7 +373,7 @@ for (i in 1:dim(pvals_tests)[1]) {
   pvals_tests[i,7] <- kpss3$p.value
 }
 
-sign.lvl <- 0.05
+sign.lvl <- 0.01
 stationarity <- data.frame(matrix(ncol = 7, nrow = length(colnames(data.xts))))
 colnames(stationarity) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
 rownames(stationarity) <- colnames(data.xts)
