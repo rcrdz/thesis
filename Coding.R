@@ -656,7 +656,7 @@ for(i in 1:dim(subset.xts)[2]) {
 
 # p-values for tests (+differences)
 pvals_tests_subset <- data.frame(matrix(ncol = 7, nrow = length(colnames(subset.xts))))
-colnames(pvals_tests_subset) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
+colnames(pvals_tests_subset) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
 rownames(pvals_tests_subset) <- colnames(subset.xts)
 for (i in 1:dim(pvals_tests_subset)[1]) {
   adf <- adf.test(subset.xts[,i])
@@ -684,7 +684,7 @@ for (i in 1:dim(pvals_tests_subset)[1]) {
 
 sign.lvl_subset <- 0.05
 stationarity_subset <- data.frame(matrix(ncol = 7, nrow = length(colnames(subset.xts))))
-colnames(stationarity_subset) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
+colnames(stationarity_subset) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
 rownames(stationarity_subset) <- colnames(subset.xts)
 for (i in 1:dim(stationarity_subset)[1]) {
   if(pvals_tests_subset[i,1] < sign.lvl_subset){
@@ -884,3 +884,181 @@ plot.igraph(g, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.
 
 # for nice correlation plots:
 #corrplot(corr_matrix_with_lags, method="number")
+
+
+
+
+### Trying a subset with stationary variables ###
+# We can directly use VAR-Model
+# Where do all tests agree in stationarity?
+subset_stat.xts <- data.xts[, rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")]]
+names(subset_stat.xts)
+plot(subset_stat.xts)
+# remove Luxembourg_import: only 4 datapoints
+subset_stat.xts <- subset(subset_stat.xts, select = -Luxembourg_import)
+corrplot(cor(subset_stat.xts), type = "upper", method = "color",
+         insig = "pch", tl.cex = 0.8, tl.col = "black", tl.srt = 45)
+# Seasonally adjusting by subtracting seasonal term
+my_lms_subset_stat <- lapply(1:dim(subset_stat.xts)[2], function(x) lm(subset_stat.xts[first_nonzero[x,1]:dim(data.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                             + cos(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                             + sin(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                             + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
+fitted_vals_subset_stat <- sapply(my_lms_subset_stat, fitted)
+for(i in 1:dim(subset_stat.xts)[2]){
+  if (length(fitted_vals_subset_stat[[i]]) < 2481){
+    fitted_vals_subset_stat[[i]] <- c(rep(0, first_nonzero[i,1]-1), fitted_vals_subset_stat[[i]])
+  }
+}
+fitted_vals_subset_stat <- data.frame(fitted_vals_subset_stat)
+colnames(fitted_vals_subset_stat) <- colnames(subset_stat.xts)
+fitted_vals_subset_stat <- xts(fitted_vals_subset_stat, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+
+for(i in 1:dim(subset_stat.xts)[2]) {  
+  pl <- ggplot() + 
+    geom_line(data = subset_stat.xts, aes(x = time(data.xts), y = as.numeric(subset_stat.xts[,i])), color = "black") +
+    geom_line(data = fitted_vals_subset_stat, aes(x = time(data.xts), y = as.numeric(fitted_vals_subset_stat[,i])), color = "red") +
+    xlab('Date') +
+    ylab(colnames(subset_stat.xts)[i])
+  print(pl)
+}
+
+# Is there any seasonality?
+# NOT: Sweden_import
+# Remove seasonal component from all of them
+subset_stat_deseason.xts <- subset_stat.xts
+remove <- c("Sweden_import", "Sweden_export", "forecast_load")
+for (i in names(subset_stat.xts[,! names(subset_stat.xts) %in% remove])){
+  subset_stat_deseason.xts[,i] <- subset_stat.xts[,i] - fitted_vals_subset_stat[,i]
+}
+
+# p-values for tests (+differences)
+pvals_tests_subset_stat <- data.frame(matrix(ncol = 8, nrow = length(colnames(subset_stat.xts))))
+colnames(pvals_tests_subset_stat) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)", "KPSS (deseason)")
+rownames(pvals_tests_subset_stat) <- colnames(subset_stat.xts)
+for (i in 1:dim(pvals_tests_subset_stat)[1]) {
+  adf <- adf.test(subset_stat.xts[,i])
+  pvals_tests_subset_stat[i,1] <- adf$p.value
+  # removing first value to get no NA's
+  adf1 <- adf.test(diff(subset_stat.xts[,i], differences = 1)[-1])
+  pvals_tests_subset_stat[i,2] <- adf1$p.value
+  
+  pp <- pp.test(subset_stat.xts[,i])
+  pvals_tests_subset_stat[i,3] <- pp$p.value
+  # removing first value to get no NA's
+  pp1 <- pp.test(diff(subset_stat.xts[,i], differences = 1)[-1])
+  pvals_tests_subset_stat[i,4] <- pp1$p.value
+  
+  kpss <- kpss.test(subset_stat.xts[,i])
+  pvals_tests_subset_stat[i,5] <- kpss$p.value
+  # removing first value to get no NA's
+  kpss2 <- kpss.test(diff(subset_stat.xts[,i], differences = 1)[-1])
+  pvals_tests_subset_stat[i,6] <- kpss2$p.value
+  # removing also second value to get no NA's
+  kpss3 <- kpss.test(diff(subset_stat.xts[,i], differences = 2)[-c(1, 2)])
+  pvals_tests_subset_stat[i,7] <- kpss3$p.value
+  kpss4 <- kpss.test(subset_stat_deseason.xts[,i])
+  pvals_tests_subset_stat[i,8] <- kpss4$p.value
+}
+
+
+sign.lvl_subset_stat <- 0.05
+stationarity_subset_stat <- data.frame(matrix(ncol = 8, nrow = length(colnames(subset_stat.xts))))
+colnames(stationarity_subset_stat) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)", "KPSS (deseason)")
+rownames(stationarity_subset_stat) <- colnames(subset_stat.xts)
+for (i in 1:dim(stationarity_subset_stat)[1]) {
+  if(pvals_tests_subset_stat[i,1] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,1] <- "stat"
+  } else {
+    stationarity_subset_stat[i,1] <- "non-stat"
+  }
+  if(pvals_tests_subset_stat[i,2] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,2] <- "stat"
+  } else {
+    stationarity_subset_stat[i,2] <- "non-stat"
+  }
+  if(pvals_tests_subset_stat[i,3] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,3] <- "stat"
+  } else {
+    stationarity_subset_stat[i,3] <- "non-stat"
+  }
+  if(pvals_tests_subset_stat[i,4] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,4] <- "stat"
+  } else {
+    stationarity_subset_stat[i,4] <- "non-stat"
+  }
+  if(pvals_tests_subset_stat[i,5] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,5] <- "non-stat"
+  } else {
+    stationarity_subset_stat[i,5] <- "stat"
+  }
+  if(pvals_tests_subset_stat[i,6] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,6] <- "non-stat"
+  } else {
+    stationarity_subset_stat[i,6] <- "stat"
+  }
+  if(pvals_tests_subset_stat[i,7] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,7] <- "non-stat"
+  } else {
+    stationarity_subset_stat[i,7] <- "stat"
+  }
+  if(pvals_tests_subset_stat[i,8] < sign.lvl_subset_stat){
+    stationarity_subset_stat[i,8] <- "non-stat"
+  } else {
+    stationarity_subset_stat[i,8] <- "stat"
+  }
+}
+
+# optimal lag order of the subset-VAR 
+opt_lag_subset_stat <- VARselect(subset_stat_deseason.xts, lag.max = 25, type = "const")
+opt_lag_subset_stat$selection 
+no_lags_subset_stat <- as.numeric(opt_lag_subset_stat$selection[1])
+
+# Estimating VAR
+VAR_subset_stat <- VAR(subset_stat_deseason.xts, p = no_lags_subset_stat, type = "const")
+
+# Testing for Gaussianity in residuals of estimated VAR
+norm_test_subset_stat <- normality.test(VAR_subset_stat, multivariate.only = FALSE)
+pvals_res_subset_stat <- data.frame(matrix(ncol = 1, nrow = dim(subset_stat_deseason.xts)[2]+1))
+colnames(pvals_res_subset_stat) <- "p-value"
+rownames(pvals_res_subset_stat) <- c(colnames(subset_stat_deseason.xts),"Multivariate")
+pvals_res_subset_stat[1,1] <- as.numeric(norm_test_subset_stat$jb.uni$forecast_load$p.value)
+pvals_res_subset_stat[2,1] <- as.numeric(norm_test_subset_stat$jb.uni$Temperature$p.value)
+pvals_res_subset_stat[3,1] <- as.numeric(norm_test_subset_stat$jb.uni$DewPoint$p.value)
+pvals_res_subset_stat[4,1] <- as.numeric(norm_test_subset_stat$jb.uni$Wind_Speed$p.value)
+pvals_res_subset_stat[5,1] <- as.numeric(norm_test_subset_stat$jb.uni$Wind_Direction$p.value)
+pvals_res_subset_stat[6,1] <- as.numeric(norm_test_subset_stat$jb.uni$Slovenia_P_spread_to_DE$p.value)
+pvals_res_subset_stat[7,1] <- as.numeric(norm_test_subset_stat$jb.uni$Hungary_P_spread_to_DE$p.value)
+pvals_res_subset_stat[8,1] <- as.numeric(norm_test_subset_stat$jb.uni$Sweden_export$p.value)
+pvals_res_subset_stat[9,1] <- as.numeric(norm_test_subset_stat$jb.uni$Sweden_import$p.value)
+pvals_res_subset_stat[10,1] <- as.numeric(norm_test_subset_stat$jb.uni$biomass_production$p.value)
+pvals_res_subset_stat[11,1] <- as.numeric(norm_test_subset_stat$jb.mul$JB$p.value)
+# All values <.05 => residuals not normally distr. (also not multivariate normal)
+# [Geht bestimmt schöner zu coden..]
+
+# Autocorrelation between residuals?
+for (i in 1:dim(norm_test_subset_stat$resid)[2]) {
+  acf2(norm_test_subset_stat$resid[,i], main = paste("ACF and PACF of residuals of", colnames(subset_stat_deseason.xts)[i]))
+}
+# showes no significant auto-correlation between the residuals
+# => assumption of independent and non-Gaussian residuals is not unreasonable
+# => LiNGAM can be used
+
+# LiNGAM
+# Note: res$Bpruned is transpose of adjacency matrix
+res_subset_stat <- residuals(VAR_subset_stat)
+lingam <- lingam(res_subset_stat)
+adjmat_s <- as(lingam, "amat")
+B_null_s <- t(lingam$Bpruned)
+colnames(B_null_s) <- names(subset_stat_deseason.xts)
+rownames(B_null_s) <- names(subset_stat_deseason.xts)
+
+# Plotting the results
+g1 <- graph_from_adjacency_matrix(
+  B_null_s,
+  weighted = TRUE
+)
+#p1 <- c(paste("        ", round(E(g1)$weight[1],3)), paste("        ", round(E(g1)$weight[2],3)))
+#plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 10, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label=p1, edge.label.color = "brown")
+plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 8, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label.color = "brown")
+
+
