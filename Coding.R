@@ -621,21 +621,37 @@ library(NlinTS)
 
 # Log-transform
 # Depends heavily on the subset we choose (>0!)
-subset.xts <- log(data.xts[, c("NG_TTF", "EUA_price", "COAL_API2", "biomass_proudction")])
+subset.xts <- log(data.xts[, c("NG_TTF", "EUA_price", "COAL_API2")])
 names(subset.xts)
 plot(subset.xts)
 corrplot(cor(subset.xts), type = "upper", method = "color",
          insig = "pch", tl.cex = 0.8, tl.col = "black", tl.srt = 45)
 # Seasonally adjusting by subtracting seasonal term
-# is this okay in this way or do we need a function describing the seasonality?
-for (i in 1:dim(subset.xts)[2]) {
-  plot(stats::decompose(ts(subset.xts[,i], frequency = 365.25)))
+my_lms_subset <- lapply(1:dim(subset.xts)[2], function(x) lm(subset.xts[first_nonzero[x,1]:dim(data.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + sin(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
+fitted_vals_subset <- sapply(my_lms_subset, fitted)
+for(i in 1:dim(subset.xts)[2]){
+  if (length(fitted_vals_subset[[i]]) < 2481){
+    fitted_vals_subset[[i]] <- c(rep(0, first_nonzero[i,1]-1), fitted_vals_subset[[i]])
+  }
 }
-for (i in 1:dim(subset.xts)[2]) {
-  s <- stats::decompose(ts(subset.xts[,i], frequency = 365.25))
-  subset.xts[,i] <- xts(seasadj(s), order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+fitted_vals_subset <- data.frame(fitted_vals_subset)
+colnames(fitted_vals_subset) <- colnames(subset.xts)
+fitted_vals_subset <- xts(fitted_vals_subset, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+
+for(i in 1:dim(subset.xts)[2]) {  
+  pl <- ggplot() + 
+    geom_line(data = subset.xts, aes(x = time(data.xts), y = as.numeric(subset.xts[,i])), color = "black") +
+    geom_line(data = fitted_vals_subset, aes(x = time(data.xts), y = as.numeric(fitted_vals_subset[,i])), color = "red") +
+    xlab('Date') +
+    ylab(colnames(subset.xts)[i])
+  print(pl)
 }
-plot(subset.xts)
+
+# Is there any seasonality? Don't think so..
+#subset_deseason.xts <- subset.xts - fitted_vals_subset
 
 
 # p-values for tests (+differences)
