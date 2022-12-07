@@ -1061,4 +1061,31 @@ g1 <- graph_from_adjacency_matrix(
 #plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 10, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label=p1, edge.label.color = "brown")
 plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 8, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label.color = "brown")
 
+# Coefficient matrices VAR
+var.coef <- data.frame(Bcoef(VAR_subset_stat))
+mu <- var.coef[,"const"]
+var.coef <- subset(var.coef, select = -const)
+M_list <- list()
+for(i in 1:no_lags_subset_stat){
+  M_list[[i]] <- var.coef[, (i*10-9):(i*10)]
+}
+B_list <- list()
+for(i in 1:no_lags_subset_stat){
+  B_list[[i]] <- (diag(dim(subset_stat_deseason.xts)[2])-B_null_s)%*%as.matrix(M_list[[i]])
+}
 
+# Plotting lagged causal effects
+# The smallest effects have been removed.
+for(i in 1:length(B_list)){
+  B_list[[i]][which(abs(B_list[[i]]) < 0.2)] <- 0
+}
+lagged_graphs <- lapply(1:no_lags_subset_stat, function(x) graph_from_adjacency_matrix(B_list[[x]], weighted = TRUE))
+lapply(1:no_lags_subset_stat, function(x) plot.igraph(lagged_graphs[[x]], layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.005, vertex.size = 20, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, vertex.frame.color = NA, edge.label.color = "brown"))
+# LABELS FEHLEN!
+# https://bookdown.org/markhoff/social_network_analysis/network-visualization-and-aesthetics.html
+
+#p1 <- c(paste("        ", round(E(g1)$weight[1],3)), paste("        ", round(E(g1)$weight[2],3)))
+#plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 10, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label=p1, edge.label.color = "brown")
+#plot.igraph(g2, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 8, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label.color = "brown")
+
+plot(g1,vertex.size=30,edge.arrow.size= 0.5)
