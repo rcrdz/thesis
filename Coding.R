@@ -289,8 +289,8 @@ for (i in 1:dim(seasonality)[1]) {
 # Decomposition 
 # frequency = 365 means: 365 obs. until season repeats (yearly seasonality)
 # Example: forecast_residual_load
-plot(data.xts$actual_load)
-decomp_actual_load <- stats::decompose(ts(data.xts$actual_load, frequency = 365.25))
+plot(data.xts$lignite_production)
+decomp_actual_load <- stats::decompose(ts(data.xts$lignite_production, frequency = 365.25))
 plot(decomp_actual_load)
 # Seasonally Adjusting
 actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365.25) - decomp_actual_load$seasonal
@@ -362,25 +362,35 @@ for (i in 1:dim(data.xts)[2]) {
 }
 
 
-# Stationarity Tests
+### Stationarity Tests ###
 # https://stats.stackexchange.com/questions/88407/adf-test-pp-test-kpss-test-which-test-to-prefer
 # Unit root tests: ADF, PP
 # H_0: Unit root (equivalently, x is a non-stationary time series)
 # H_1: Process has root outside the unit circle, which is usually equivalent to stationarity or trend stationarity
-# adf.test and pp.test correct for lags (compared to df-test)
 
-
-# Stationarity test: KPSS (non-parametric)
+# (Trend-) Stationarity test: KPSS (non-parametric)
 # H_0: (Trend) Stationarity
 # H_1: There is a unit root
 
 # How unit-root test and stationarity-test complement each other:
 # https://stats.stackexchange.com/questions/30569/what-is-the-difference-between-a-stationary-test-and-a-unit-root-test/235916#235916(I
+# PP main disadvantage: performs worse than ADF if sample not big enough
+# PP main advantage: non-parametric
 
 # Log transforming a non-stationary variable can not make it stationary
 
-pvals_tests <- data.frame(matrix(ncol = 7, nrow = length(colnames(data.xts))))
-colnames(pvals_tests) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
+# Are some results different because of structural break?
+# chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://www.zeileis.org/papers/OeSG-2001.pdf
+# https://github.com/julzerinos/r-structural-breaks-with-ml
+
+# Zivot and Andrews Unit Root Test (allows for structural breaks)
+# H_0: unit root process with drift that excludes exogenous structural change
+# H_1: depending on the model variant: trend stationary process that allows for a one time break in the level, the trend or both
+# Reject H_0 if teststat < critical value => (trend-) stationary
+
+# p-values for the tests
+pvals_tests <- data.frame(matrix(ncol = 8, nrow = length(colnames(data.xts))))
+colnames(pvals_tests) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)", "KPSS (deseason)")
 rownames(pvals_tests) <- colnames(data.xts)
 for (i in 1:dim(pvals_tests)[1]) {
   adf <- adf.test(data.xts[,i])
@@ -403,47 +413,75 @@ for (i in 1:dim(pvals_tests)[1]) {
   # removing also second value to get no NA's
   kpss3 <- kpss.test(diff(data.xts[,i], differences = 2)[-c(1, 2)])
   pvals_tests[i,7] <- kpss3$p.value
+  kpss4 <- kpss.test(seasonadj.xts[,i])
+  pvals_tests[i,8] <- kpss4$p.value
 }
 
-sign.lvl <- 0.01
-stationarity <- data.frame(matrix(ncol = 7, nrow = length(colnames(data.xts))))
-colnames(stationarity) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff")
+# applying the Zivot and Andrews test
+za.tests <- lapply(1:dim(data.xts)[2], function(x) ur.za(data.xts[,x]))
+# plot of all variables with their potential structural breaks
+for(i in 1:dim(data.xts)[2]) {  
+  pl <- ggplot() + 
+    geom_line(data = data.xts, aes(x = time(data.xts), y = as.numeric(data.xts[,i])), color = "black") +
+    geom_vline(xintercept = time(data.xts)[za.tests[[i]]@bpoint], color = "red", linetype="dashed") +
+    xlab('Date') +
+    ylab(colnames(data.xts)[i])
+  print(pl)
+}
+
+sign.lvl.pp <- 0.05
+sign.lvl.adf <- 0.05
+sign.lvl.kpss <- 0.05
+sign.lvl.za <- 0.05
+ifelse(sign.lvl.za == 0.05, ind <- 2, ind <- 1)
+stationarity <- data.frame(matrix(ncol = 9, nrow = length(colnames(data.xts))))
+colnames(stationarity) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)", "KPSS (deseason)", "ZA")
 rownames(stationarity) <- colnames(data.xts)
 for (i in 1:dim(stationarity)[1]) {
-  if(pvals_tests[i,1] < sign.lvl){
+  if(pvals_tests[i,1] < sign.lvl.adf){
     stationarity[i,1] <- "stat"
   } else {
     stationarity[i,1] <- "non-stat"
   }
-  if(pvals_tests[i,2] < sign.lvl){
+  if(pvals_tests[i,2] < sign.lvl.adf){
     stationarity[i,2] <- "stat"
   } else {
     stationarity[i,2] <- "non-stat"
   }
-  if(pvals_tests[i,3] < sign.lvl){
+  if(pvals_tests[i,3] < sign.lvl.pp){
     stationarity[i,3] <- "stat"
   } else {
     stationarity[i,3] <- "non-stat"
   }
-  if(pvals_tests[i,4] < sign.lvl){
+  if(pvals_tests[i,4] < sign.lvl.pp){
     stationarity[i,4] <- "stat"
   } else {
     stationarity[i,4] <- "non-stat"
   }
-  if(pvals_tests[i,5] < sign.lvl){
+  if(pvals_tests[i,5] < sign.lvl.kpss){
     stationarity[i,5] <- "non-stat"
   } else {
     stationarity[i,5] <- "stat"
   }
-  if(pvals_tests[i,6] < sign.lvl){
+  if(pvals_tests[i,6] < sign.lvl.kpss){
     stationarity[i,6] <- "non-stat"
   } else {
     stationarity[i,6] <- "stat"
   }
-  if(pvals_tests[i,7] < sign.lvl){
+  if(pvals_tests[i,7] < sign.lvl.kpss){
     stationarity[i,7] <- "non-stat"
   } else {
     stationarity[i,7] <- "stat"
+  }
+  if(pvals_tests[i,8] < sign.lvl.kpss){
+    stationarity[i,8] <- "non-stat"
+  } else {
+    stationarity[i,8] <- "stat"
+  }
+  if(za.tests[[i]]@teststat < za.tests[[i]]@cval[ind]){
+    stationarity[i,9] <- "stat"
+  } else {
+    stationarity[i,9] <- "non-stat"
   }
 }
 
@@ -460,19 +498,7 @@ cat("-----------------------------", "ADF == PP == KPSS == non-stat", "---------
 # https://stats.stackexchange.com/questions/225087/seasonal-data-deemed-stationary-by-adf-and-kpss-tests
 
 
-
-# Are some results different because of structural break?
-# chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://www.zeileis.org/papers/OeSG-2001.pdf
-# https://github.com/julzerinos/r-structural-breaks-with-ml
-
-# Zivot and Andrews Unit Root Test
-# H_0: unit root process with drift that excludes exogenous structural change
-# H_1: depending on the model variant: trend stationary process that allows for a one time break in the level, the trend or both
-za.gnp <- ur.za(data.xts$DA_Price_DE)
-summary(za.gnp)
-plot(data.xts$DA_Price_DE)
-addEventLines(events = xts(x = 'Breakpoint', order.by = time(data.xts$DA_Price_DE)[za.gnp@bpoint]), lty = 2, col = 'red', lwd = 1)
-
+### Long version of structural-break control ###
 # Inspecting the variables where adf.test and pp.test differ in their outcomes
 # Luxembourg_export has a structural break @ 2017-06-28
 # This is, because data starts @ 2017-06-28
@@ -530,10 +556,6 @@ plot(solar_production)
 # Switzerland_P_spread_to_DE
 Switzerland_P_spread_to_DE <- data.xts$Switzerland_P_spread_to_DE
 plot(Switzerland_P_spread_to_DE)
-
-# How can we overcome structural breaks? 
-# Logarithm? 
-# But: Problem with negative and zeros as argument of log
 
 
 #######################
