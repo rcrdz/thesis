@@ -116,36 +116,11 @@ plot(data.xts[,27:35], main = "Power production from different sources")
 ########################
 ### Data Exploration ###
 ########################
-# Variables with negative values?
-#data_without_date <- data[ , !(names(data) %in% "Date")]
-#vals_greater_zero <- data_without_date %>%
-#  gather(var, val) %>%
-#  group_by(var) %>%
-#  summarise(greater_zero = all(val[!is.na(val)] >= 0))
-# Number of variables with only positive values: 63
-#sum(vals_greater_zero$greater_zero)
-# # of variables with also negative values: 18
-#dim(vals_greater_zero)[1]-sum(vals_greater_zero$greater_zero)
-# Variables with also negative values:
-#vals_greater_zero$var[vals_greater_zero$greater_zero == FALSE]
-
-# It is way easier to get the non-negatives than above
-non_negatives.xts = data.xts[,colSums(data.xts<0)==0]
-names(non_negatives.xts)
-# variables with also negative values
-negatives.xts <- data.xts[,! names(data.xts) %in% names(non_negatives.xts)]
-names(negatives.xts)
-# Positive valued variables (BUT: removed also the ones which only "start later")
-positives.xts = data.xts[,colSums(data.xts<=0)==0]
-names(positives.xts)
-
-# Which variables start later in time?
+### Variables 'starting later' ###
 # Example: physical_net_export
-var_bool <- data.xts$physical_net_export != 0
-time_index <- min(which(var_bool == TRUE))
 plot(data.xts$physical_net_export)
-timepoint <- time(data.xts$physical_net_export)[time_index]
-addEventLines(events = xts(x = 'first nonzero', order.by = timepoint), lty = 2, col = 'tomato', lwd = 1.5)
+time_index <- min(which((data.xts$physical_net_export != 0) == TRUE))
+addEventLines(events = xts(x = 'first nonzero', order.by = time(data.xts$physical_net_export)[time_index]), lty = 2, col = 'tomato', lwd = 1.5)
 
 # List: When is first nonzero entry
 first_nonzero <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
@@ -159,8 +134,26 @@ for (i in 1:dim(first_nonzero)[1]) {
 cat("--------------------------", "VARIABLES 'STARTING LATER'", "--------------------------", rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1], "--------------------------", paste("total:", sum(first_nonzero != 1), "/", dim(data.xts)[2]), sep='\n')
 
 
+### Positive / Negative Variables ###
+# Positive variables
+strictly_positives.xts <- xts(order.by=index(data.xts))
+for (i in 1:dim(data.xts)[2]){
+  if (colSums(data.xts[first_nonzero[colnames(data.xts)[i],]:dim(data.xts)[1], colnames(data.xts)[i]]<=0) == 0){
+    strictly_positives.xts <- cbind(strictly_positives.xts, data.xts[,i])
+  }
+}
+cat("---------------------------", "STRICTLY POSITIVE VARIABLES", "---------------------------", names(strictly_positives.xts), "---------------------------", paste("total:", dim(strictly_positives.xts)[2], "/", dim(data.xts)[2]), sep='\n')
 
-# Zero-inflated data
+# Non-negative variables
+non_negatives.xts = data.xts[,colSums(data.xts<0)==0]
+cat("----------------------", "NON-NEGATIVE VARIABLES", "----------------------", names(non_negatives.xts), "----------------------", paste("total:", dim(non_negatives.xts)[2], "/", dim(data.xts)[2]), sep='\n')
+
+# Variables which also attain negative values
+negatives.xts <- data.xts[,! names(data.xts) %in% names(non_negatives.xts)]
+cat("-----------------------------------------", "VARIABLES WITH NEGATIVE AND POSITIVE VALS", "-----------------------------------------", names(negatives.xts), "-----------------------------------------", paste("total:", dim(negatives.xts)[2], "/", dim(data.xts)[2]), sep='\n')
+
+
+### Zero-inflated data ###
 zeros_count <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
 rownames(zeros_count) <- colnames(data.xts)
 colnames(zeros_count) <- "# of Zeros"
