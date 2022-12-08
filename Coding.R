@@ -138,7 +138,7 @@ cat("--------------------------", "VARIABLES 'STARTING LATER'", "---------------
 # Positive variables
 strictly_positives.xts <- xts(order.by=index(data.xts))
 for (i in 1:dim(data.xts)[2]){
-  if (colSums(data.xts[first_nonzero[colnames(data.xts)[i],]:dim(data.xts)[1], colnames(data.xts)[i]]<=0) == 0){
+  if (colSums(data.xts[first_nonzero[i,]:dim(data.xts)[1], colnames(data.xts)[i]]<=0) == 0){
     strictly_positives.xts <- cbind(strictly_positives.xts, data.xts[,i])
   }
 }
@@ -172,13 +172,13 @@ cat("---------------------------", "NOT ZERO-INFLATED VARIABLES", "-------------
 for (i in 1:dim(zero_infl_vars)[1]) {
   hist(data.xts[first_nonzero[rownames(zero_infl_vars)[i],]:dim(data.xts)[1], rownames(zero_infl_vars)[i]], xlab = rownames(zero_infl_vars)[i], main = paste("Histogram of ", rownames(zero_infl_vars)[i]), probability = TRUE)
 }
-
 # Histograms "non-zero-inflated" variables (removed zeros before "start")
 for (i in 1:dim(non_zero_infl_vars)[1]) {
   hist(data.xts[first_nonzero[rownames(non_zero_infl_vars)[i],]:dim(data.xts)[1], rownames(non_zero_infl_vars)[i]], xlab = rownames(non_zero_infl_vars)[i], main = paste("Histogram of ", rownames(non_zero_infl_vars)[i]), probability = TRUE)
 }
 
 
+### Covariance and Correlation matrices ###
 # Correlation matrix (without lags)
 cor_threshold <- 0.9
 
@@ -1026,7 +1026,6 @@ pvals_res_subset_stat[9,1] <- as.numeric(norm_test_subset_stat$jb.uni$Sweden_imp
 pvals_res_subset_stat[10,1] <- as.numeric(norm_test_subset_stat$jb.uni$biomass_production$p.value)
 pvals_res_subset_stat[11,1] <- as.numeric(norm_test_subset_stat$jb.mul$JB$p.value)
 # All values <.05 => residuals not normally distr. (also not multivariate normal)
-# [Geht bestimmt schöner zu coden..]
 
 # Autocorrelation between residuals?
 for (i in 1:dim(norm_test_subset_stat$resid)[2]) {
@@ -1050,9 +1049,8 @@ g1 <- graph_from_adjacency_matrix(
   B_null_s,
   weighted = TRUE
 )
-#p1 <- c(paste("        ", round(E(g1)$weight[1],3)), paste("        ", round(E(g1)$weight[2],3)))
-#plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 10, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label=p1, edge.label.color = "brown")
-plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 8, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label.color = "brown")
+plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "grey53", edge.arrow.size=0.01, vertex.size = 15, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 0.5, edge.label = round(E(g1)$weight,3), edge.label.cex = 0.45, edge.label.color = "brown")
+#legend('topleft',legend=names(subset_stat_deseason.xts),col='black',pch=21, pt.bg='orange')
 
 # Coefficient matrices VAR
 var.coef <- data.frame(Bcoef(VAR_subset_stat))
@@ -1073,12 +1071,6 @@ for(i in 1:length(B_list)){
   B_list[[i]][which(abs(B_list[[i]]) < 0.2)] <- 0
 }
 lagged_graphs <- lapply(1:no_lags_subset_stat, function(x) graph_from_adjacency_matrix(B_list[[x]], weighted = TRUE))
-lapply(1:no_lags_subset_stat, function(x) plot.igraph(lagged_graphs[[x]], layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.005, vertex.size = 20, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, vertex.frame.color = NA, edge.label.color = "brown"))
-# LABELS FEHLEN!
+lapply(1:no_lags_subset_stat, function(x) plot.igraph(lagged_graphs[[x]], layout=layout.reingold.tilford, edge.color = "grey53", edge.arrow.size=0.01, vertex.size = 15, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 0.5, edge.label = round(E(lagged_graphs[[x]])$weight,3), edge.label.cex = 0.45, edge.label.color = "brown"))
+
 # https://bookdown.org/markhoff/social_network_analysis/network-visualization-and-aesthetics.html
-
-#p1 <- c(paste("        ", round(E(g1)$weight[1],3)), paste("        ", round(E(g1)$weight[2],3)))
-#plot.igraph(g1, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 10, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label=p1, edge.label.color = "brown")
-#plot.igraph(g2, layout=layout.reingold.tilford, edge.color = "black", edge.arrow.size=0.01, vertex.size = 8, vertex.label.color="black", vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 1, edge.label.color = "brown")
-
-plot(g1,vertex.size=30,edge.arrow.size= 0.5)
