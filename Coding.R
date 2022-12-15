@@ -1350,7 +1350,8 @@ visIgraph(complete.std.graph.B_0)
 
 # Graphical representations of B_lagged
 complete.std.graph.B_lagged <- lapply(1:complete.nlags, function(x) graph_from_adjacency_matrix(complete.std.B_list[[x]], weighted = TRUE))
-lapply(1:complete.nlags, function(x) saveWidget(visIgraph(complete.std.graph.B_lagged[[x]]), file = paste0("Plots/causaleffects_B_",x,".html"), title = paste0("B_", x)))
+lapply(1:complete.nlags, function(x) visIgraph(complete.std.graph.B_lagged[[x]]))
+#lapply(1:complete.nlags, function(x) saveWidget(visIgraph(complete.std.graph.B_lagged[[x]]), file = paste0("Plots/causaleffects_B_",x,".html"), title = paste0("B_", x)))
 
 
 ## convert to VisNetwork-list
@@ -1362,7 +1363,7 @@ visNetwork(test.visn$nodes, test.visn$edges)
   
 
 # tkplot()
-# YEAH
+# 
 
 
 
