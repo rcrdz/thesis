@@ -21,6 +21,9 @@ library(corrplot)
 library(tsbox)
 library(readxl)
 library(ggplot2)
+library(visNetwork)
+library(htmlwidgets)
+
 
 
 #source("GrangerTests.R")
@@ -309,7 +312,7 @@ my_lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[first_nonzero[x,1]:
                                                     + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
 fitted_vals <- sapply(my_lms, fitted)
 for(i in 1:dim(data.xts)[2]){
-  if (length(fitted_vals[[i]]) < 2481){
+  if (length(fitted_vals[[i]]) < dim(data.xts)[1]){
     fitted_vals[[i]] <- c(rep(0, first_nonzero[i,1]-1), fitted_vals[[i]])
   }
 }
@@ -621,7 +624,7 @@ library(NlinTS)
 # When VAR when VECM
 # https://www.researchgate.net/post/Is-it-necessary-for-variables-to-be-integrated-of-order-1-to-applying-VAR-model-or-I-can-use-it-if-variables-are-integrated-of-any-order
 
-### Stationary-only subset ###
+# Stationary-only subset --------------------------------------------
 # We can directly use VAR-Model
 # Where do all tests agree in stationarity?
 # ADF == PP == KPSS == stat
@@ -646,7 +649,7 @@ subset_1.lms <- lapply(1:dim(subset_1.xts)[2], function(x) lm(subset_1.xts[first
                                                                        + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
 subset_1.fitted <- sapply(subset_1.lms, fitted)
 for(i in 1:dim(subset_1.xts)[2]){
-  if (length(subset_1.fitted[[i]]) < 2481){
+  if (length(subset_1.fitted[[i]]) < dim(data.xts)[1]){
     subset_1.fitted[[i]] <- c(rep(0, first_nonzero[i,1]-1), subset_1.fitted[[i]])
   }
 }
@@ -824,7 +827,7 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
-### Subset of variables which are stationary after one diff ###
+# Variables which are stationary after one diff -----------------------------
 subset_2.xts <- data.xts[, c("DA_Price_DE", "forecast_residual_load", "Temperature", "GHI", "solar_production")]
 names(subset_2.xts)
 plot(subset_2.xts)
@@ -844,7 +847,7 @@ subset_2.lms <- lapply(1:dim(subset_2.xts)[2], function(x) lm(subset_2.xts[first
                                                              + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
 subset_2.fitted <- sapply(subset_2.lms, fitted)
 for(i in 1:dim(subset_2.xts)[2]){
-  if (length(subset_2.fitted[[i]]) < 2481){
+  if (length(subset_2.fitted[[i]]) < dim(data.xts)[1]){
     subset_2.fitted[[i]] <- c(rep(0, first_nonzero[i,1]-1), subset_2.fitted[[i]])
   }
 }
@@ -1134,11 +1137,238 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
+# Complete dataset ---------------------------------------------
+# Checking seasonality
+for(i in 1:dim(data.xts)[2]) {  
+  abc <- ggplot() + 
+    geom_line(data = data.xts, aes(x = time(data.xts), y = as.numeric(data.xts[,i])), color = "black") +
+    geom_line(data = fitted_vals, aes(x = time(data.xts), y = as.numeric(fitted_vals[,i])), color = "red") +
+    xlab('Date') +
+    ylab(colnames(data.xts)[i]) +
+    theme(axis.text.x=element_text(angle=60, hjust=1))
+  print(abc)
+}
+# Variables which seem NOT to have seasonality:
+# Belgium_import, Belgium_export, Norway_import, Norway_export,
+# Poland_import, Luxembourg_import, Netherlands_import, Netherlands_export,
+# Sweden_4_P_spread_to_DE, DK_2_P_spread_to_DE, COAL_API2, EUA_price, NG_TTF,
+# Sweden_import, Sweden_export
+complete.remove <- c("Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
+                     "Poland_import", "Luxembourg_import", "Netherlands_import", "Netherlands_export",
+                     "Sweden_4_P_spread_to_DE", "DK_2_P_spread_to_DE", "COAL_API2", "EUA_price",
+                     "NG_TTF", "Sweden_import", "Sweden_export")
+complete.xts <- data.xts
+for (i in names(complete.xts[, ! names(complete.xts) %in% complete.remove])){
+  complete.xts[,i] <- data.xts[,i] - fitted_vals[,i]
+}
+
+# Plots after deseasonalization
+for(i in 1:dim(complete.xts)[2]) {  
+  abc <- ggplot() + 
+    geom_line(data = complete.xts, aes(x = time(data.xts), y = as.numeric(complete.xts[,i])), color = "black") +
+    xlab('Date') +
+    ylab(colnames(data.xts)[i]) +
+    theme(axis.text.x=element_text(angle=60, hjust=1))
+  print(abc)
+}
+
+# p-values for tests (+differences)
+complete.pvals_tests <- data.frame(matrix(ncol = 7, nrow = length(colnames(complete.xts))))
+colnames(complete.pvals_tests) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
+rownames(complete.pvals_tests) <- colnames(complete.xts)
+for (i in 1:dim(complete.pvals_tests)[1]) {
+  adf <- adf.test(complete.xts[,i])
+  complete.pvals_tests[i,1] <- adf$p.value
+  # removing first value to get no NA's
+  adf1 <- adf.test(diff(complete.xts[,i], differences = 1)[-1])
+  complete.pvals_tests[i,2] <- adf1$p.value
+  
+  pp <- pp.test(complete.xts[,i])
+  complete.pvals_tests[i,3] <- pp$p.value
+  # removing first value to get no NA's
+  pp1 <- pp.test(diff(complete.xts[,i], differences = 1)[-1])
+  complete.pvals_tests[i,4] <- pp1$p.value
+  
+  kpss <- kpss.test(complete.xts[,i])
+  complete.pvals_tests[i,5] <- kpss$p.value
+  # removing first value to get no NA's
+  kpss2 <- kpss.test(diff(complete.xts[,i], differences = 1)[-1])
+  complete.pvals_tests[i,6] <- kpss2$p.value
+  # removing also second value to get no NA's
+  kpss3 <- kpss.test(diff(complete.xts[,i], differences = 2)[-c(1, 2)])
+  complete.pvals_tests[i,7] <- kpss3$p.value
+}
+
+complete.sign.lvl_adf <- 0.05
+complete.sign.lvl_pp <- 0.05
+complete.sign.lvl_kpss <- 0.05
+complete.stationarity <- data.frame(matrix(ncol = 7, nrow = length(colnames(complete.xts))))
+colnames(complete.stationarity) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
+rownames(complete.stationarity) <- colnames(complete.xts)
+for (i in 1:dim(complete.stationarity)[1]) {
+  if(complete.pvals_tests[i,1] < complete.sign.lvl_adf){
+    complete.stationarity[i,1] <- "stat"
+  } else {
+    complete.stationarity[i,1] <- "non-stat"
+  }
+  if(complete.pvals_tests[i,2] < complete.sign.lvl_adf){
+    complete.stationarity[i,2] <- "stat"
+  } else {
+    complete.stationarity[i,2] <- "non-stat"
+  }
+  if(complete.pvals_tests[i,3] < complete.sign.lvl_pp){
+    complete.stationarity[i,3] <- "stat"
+  } else {
+    complete.stationarity[i,3] <- "non-stat"
+  }
+  if(complete.pvals_tests[i,4] < complete.sign.lvl_pp){
+    complete.stationarity[i,4] <- "stat"
+  } else {
+    complete.stationarity[i,4] <- "non-stat"
+  }
+  if(complete.pvals_tests[i,5] < complete.sign.lvl_kpss){
+    complete.stationarity[i,5] <- "non-stat"
+  } else {
+    complete.stationarity[i,5] <- "stat"
+  }
+  if(complete.pvals_tests[i,6] < complete.sign.lvl_kpss){
+    complete.stationarity[i,6] <- "non-stat"
+  } else {
+    complete.stationarity[i,6] <- "stat"
+  }
+  if(complete.pvals_tests[i,7] < complete.sign.lvl_kpss){
+    complete.stationarity[i,7] <- "non-stat"
+  } else {
+    complete.stationarity[i,7] <- "stat"
+  }
+}
+
+# Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
+# NG_TTF, EUA_price, COAL_API2
+complete.diff <- c("NG_TTF", "EUA_price", "COAL_API2")
+for (i in complete.diff){
+  complete.xts[,i] <- diff(complete.xts[,i], 1)
+  colnames(complete.xts)[colnames(complete.xts) == i] <- paste0(i, ".diff")
+}
+# EM algorithm / Kalman filter for the NA's?
+# But sample is not very small => Remove first row
+complete.xts <- complete.xts[-1,]
+
+# Estimate number of lags needed
+complete.nlags <- VARselect(complete.xts, lag.max = 15, type = "const")
+complete.nlags$selection 
+complete.nlags <- as.numeric(complete.nlags$selection[1])
+# alternative: lags.select()
+
+# Estimate number of cointegrating vectors
+complete.rank <- rank.test(VECM(complete.xts, include = "const", estim = "ML", lag = complete.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
+complete.rank
+complete.rank <- complete.rank$r
+# alternative: rank.select()
+
+# Estimating VECM with cajorls() and specified rank from
+complete.coint <- ca.jo(complete.xts, type = "eigen", ecdet = "const", spec = "transitory", K = complete.nlags, dumvar = NULL)
+complete.vecm <- cajorls(complete.coint, r = complete.rank)
+#summary(complete.vecm$rlm)
+
+# Normality test on residuals
+complete.var <- vec2var(complete.coint, r=complete.rank)
+complete.normtest <- normality.test(complete.var, multivariate.only = FALSE)
+
+complete.pvals_res <- data.frame(matrix(ncol = 1, nrow = dim(complete.xts)[2]+1))
+colnames(complete.pvals_res) <- "p-value"
+rownames(complete.pvals_res) <- c(colnames(complete.xts),"Multivariate")
+for (i in 1:dim(complete.xts)[2]){
+  complete.pvals_res[i,1] <- as.numeric(complete.normtest$jb.uni[[paste0("resids of ", names(complete.xts)[i])]]$p.value)
+}
+complete.pvals_res[dim(complete.xts)[2]+1,1] <- as.numeric(complete.normtest$jb.mul$JB$p.value)
+
+# Autocorrelation between residuals?
+for (i in 1:dim(complete.normtest$resid)[2]) {
+  acf2(complete.normtest$resid[,i], main = paste("ACF and PACF of residuals of", colnames(complete.xts)[i]))
+}
+# showes no significant auto-correlation between the residuals
+# => assumption of independent and non-Gaussian residuals is not unreasonable
+# => LiNGAM can be used
+
+# TESTS [!]
+# https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
+
+# Impulse responses
+irf_all <- irf(complete.var)
+par(ask=F)
+plot(irf_all)
+
+# Standardize variables before DAG analysis
+complete.xts.std <- scale(complete.xts)
+
+# Procedure p. 7
+# VECM 2 VAR:
+# https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
+# 1: VECM
+complete.std.coint <- ca.jo(complete.xts.std, type = "eigen", ecdet = "const", spec = "transitory", K = complete.nlags, dumvar = NULL)
+complete.std.vecm <- cajorls(complete.std.coint, r = complete.rank)
+complete.std.pi <- coefPI(complete.std.vecm)
+complete.std.alpha <- coefA(complete.std.vecm)
+complete.std.beta <- coefB(complete.std.vecm)
+# How to get the gammas and mu? gammes has only 1 matrix (!)
+
+# 2: VAR
+complete.std.var <- vec2var(complete.std.coint, r=complete.rank)
+complete.std.M_list <- complete.std.var$A # M_list hast 2 matrices (since nlags=2)
+
+# 3: Residuals of VAR
+complete.std.var.res <- complete.std.var$resid
+
+# 4: LiNGAM
+complete.std.lingam <- lingam(complete.std.var.res)
+#as(complete.std.lingam, "amat")
+complete.std.B_0 <- t(complete.std.lingam$Bpruned) # Bpruned is transpose of adj.matr.
+colnames(complete.std.B_0) <- names(complete.xts.std)
+rownames(complete.std.B_0) <- names(complete.xts.std)
+
+# 5: Matrices of lagged causal effects, B_tau
+complete.std.B_list <- list()
+for(i in 1:complete.nlags){
+  complete.std.B_list[[i]] <- (diag(dim(complete.xts.std)[2])-complete.std.B_0)%*%as.matrix(complete.std.M_list[[i]])
+}
+# use a cutoff in effect size as our signifcance threshold
+# Remove all effects from B_tau that are smaller in abs. value than 70% abs. value quantile of all elements in B_1
+complete.std.B.threshold <- quantile(abs(complete.std.B_list[[1]]), probs = 0.7)
+for(i in 1:length(complete.std.B_list)){
+  complete.std.B_list[[i]][which(abs(complete.std.B_list[[i]]) < complete.std.B.threshold)] <- 0
+}
+
+
+# Graphical representation of B_0
+complete.std.graph.B_0 <- graph_from_adjacency_matrix(
+  complete.std.B_0,
+  weighted = TRUE
+)
+visIgraph(complete.std.graph.B_0)
+#saveWidget(visIgraph(complete.std.graph.B_0), file = "Plots/causaleffects_B_0.html", title = "B_0")
+
+# Graphical representations of B_lagged
+complete.std.graph.B_lagged <- lapply(1:complete.nlags, function(x) graph_from_adjacency_matrix(complete.std.B_list[[x]], weighted = TRUE))
+lapply(1:complete.nlags, function(x) saveWidget(visIgraph(complete.std.graph.B_lagged[[x]]), file = paste0("Plots/causaleffects_B_",x,".html"), title = paste0("B_", x)))
+
+
+## convert to VisNetwork-list
+test.visn <- toVisNetworkData(complete.std.graph.B_0)
+## copy column "weight" to new column "value" in list "edges"
+test.visn$edges$value <- test.visn$edges$weight
+
+visNetwork(test.visn$nodes, test.visn$edges)
+  
+
+# tkplot()
+# YEAH
+
+
+
+
 
 # Different VECM approach
-data.lags <- VARselect(data.xts, lag.max = 10, type = "const")
-data.lags$selection 
-data.lags <- as.numeric(data.lags$selection[1])
 
 X = VECM(data.xts, lag=data.lags-1, include="const", estim="ML") 
 rank.test(X)
@@ -1188,8 +1418,6 @@ plot.igraph(data.graph_inst, layout=layout.reingold.tilford, edge.color = "grey5
 
 dev.off()
 
-library(visNetwork)
-library(htmlwidgets)
 saveWidget(visIgraph(data.graph_inst), file = "Plots/causalrelationships.html", title = "TEST")
 
 
