@@ -1354,59 +1354,20 @@ lapply(1:complete.nlags, function(x) visIgraph(complete.std.graph.B_lagged[[x]])
 #lapply(1:complete.nlags, function(x) saveWidget(visIgraph(complete.std.graph.B_lagged[[x]]), file = paste0("Plots/causaleffects_B_",x,".html"), title = paste0("B_", x)))
 
 
+# Alternative ways for graphical representation:
 ## convert to VisNetwork-list
 test.visn <- toVisNetworkData(complete.std.graph.B_0)
 ## copy column "weight" to new column "value" in list "edges"
 test.visn$edges$value <- test.visn$edges$weight
 
 visNetwork(test.visn$nodes, test.visn$edges)
-  
-
 # tkplot()
-# 
+ 
 
 
 
 
-
-# Different VECM approach
-
-X = VECM(data.xts, lag=data.lags-1, include="const", estim="ML") 
-rank.test(X)
-
-r <- rank.test(VECM(data.xts, include = "const", estim = "ML", lag = data.lags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
-
-X <- VECM(data.xts, include = "const", estim = "ML", lag = data.lags-1, r = r$r, LRinclude = "none")
-
-# How the models look like with different cointegration ranks:
-# https://www.r-bloggers.com/2021/12/vector-error-correction-model-vecm-using-r/
-
-X.Pi <- coefPI(X) # Pi = alpha*beta'
-
-# Impulse response function
-irf(X)
-
-# normality test
-data.res <- X$residuals
-data.normtest <- normality.test(X, multivariate.only = FALSE)
-
-
-# LiNGAM analysis
-# Note: res$Bpruned is transpose of adjacency matrix
-data.lingam <- lingam(data.res)
-as(data.lingam, "amat")
-data.B_null <- t(data.lingam$Bpruned)
-colnames(data.B_null) <- names(data.xts)
-rownames(data.B_null) <- names(data.xts)
-
-# B_0: The instantaneous causal effects
-# Plotting the results
-data.graph_inst <- graph_from_adjacency_matrix(
-  data.B_null,
-  weighted = TRUE
-)
-
-# Plot 2 PDF
+# Plot to PDF
 pdf(file = "Plots/My Plot.pdf",   # The directory you want to save the file in
     width = 10, # The width of the plot in inches
     height = 10) # The height of the plot in inches
@@ -1418,41 +1379,3 @@ plot.igraph(data.graph_inst, layout=layout.reingold.tilford, edge.color = "grey5
             edge.label = round(E(data.graph_inst)$weight,3), edge.label.cex = 0.45, edge.label.color = "brown")
 
 dev.off()
-
-saveWidget(visIgraph(data.graph_inst), file = "Plots/causalrelationships.html", title = "TEST")
-
-
-
-
-# New approach: Do they agree?
-# Estimating VECM with cajorls() and specified rank from teststatistic
-data.coint <- ca.jo(data.xts, type = "trace", ecdet = "const", spec = "transitory", K = data.lags, dumvar = NULL)
-data.vecm <- cajorls(data.coint, r = r$r)
-summary(data.vecm$rlm)
-
-data.vec2var <- vec2var(data.coint, r=r$r)
-data.normtest <- normality.test(data.vec2var, multivariate.only = FALSE)
-
-# LiNGAM analysis
-# Note: res$Bpruned is transpose of adjacency matrix
-data.res2 <- data.vec2var$resid
-data.lingam2 <- lingam(data.res2)
-as(data.lingam2, "amat")
-data.B_null.2 <- t(data.lingam2$Bpruned)
-colnames(data.B_null.2) <- names(data.xts)
-rownames(data.B_null.2) <- names(data.xts)
-
-# B_0: The instantaneous causal effects
-# Plotting the results
-data2.graph_inst <- graph_from_adjacency_matrix(
-  data.B_null.2,
-  weighted = TRUE
-)
-plot.igraph(data2.graph_inst, layout=layout.reingold.tilford, edge.color = "grey53", 
-            edge.arrow.size=0.01, vertex.size = 15, vertex.label.color="black", 
-            vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 0.5, 
-            edge.label = round(E(data2.graph_inst)$weight,3), edge.label.cex = 0.45, edge.label.color = "brown")
-
-saveWidget(visIgraph(data.graph_inst), file = "Plots/causalrelationships2.html", title = "TEST")
-
-
