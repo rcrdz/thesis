@@ -624,10 +624,17 @@ library(NlinTS)
 ### Stationary-only subset ###
 # We can directly use VAR-Model
 # Where do all tests agree in stationarity?
+# ADF == PP == KPSS == stat
 subset_1.xts <- data.xts[, rownames(stationarity)[which(stationarity$ADF=="stat" & stationarity$PP=="stat" & stationarity$KPSS=="stat")]]
 names(subset_1.xts)
 plot(subset_1.xts)
-# Log-transform no possible (<=0!)
+stack(as.data.frame(subset_1.xts)) %>% ggplot(aes(x = ind, y = values, fill = ind)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab('Variables') +
+  ylab('Values') +
+  labs(fill = "Variables")
+# Log-transform not possible (<=0!)
 # remove Luxembourg_import: only 4 datapoints
 subset_1.xts <- subset(subset_1.xts, select = -Luxembourg_import)
 corrplot(cor(subset_1.xts), type = "upper", method = "color",
@@ -821,7 +828,13 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 subset_2.xts <- data.xts[, c("DA_Price_DE", "forecast_residual_load", "Temperature", "GHI", "solar_production")]
 names(subset_2.xts)
 plot(subset_2.xts)
-# Log-transform no possible (<=0!)
+stack(as.data.frame(subset_2.xts)) %>% ggplot(aes(x = ind, y = values, fill = ind)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab('Variables') +
+  ylab('Values') +
+  labs(fill = "Variables")
+# Log-transform not possible (<=0!)
 corrplot(cor(subset_2.xts), type = "upper", method = "color",
          insig = "pch", tl.cex = 0.8, tl.col = "black", tl.srt = 45)
 # Seasonally adjusting by subtracting seasonal term
@@ -960,12 +973,12 @@ cbind(subset_2.coint@teststat, subset_2.coint@cval)
 # r=0 tests for presence of cointegration
 # test statistic for r=0 exceeds 1% sign.lvl. we have strong evidence to reject H_0 of no cointegration
 # But: for sign.lvl. 0.01 we're not able to reject H_0: r<=4 
-# => 3 cointegrated vectors at a 1% significance level
+# => 4 cointegrated vectors at a 1% significance level
 # A cointegrating vector is a stationary linear combination of possibly nonstationary vector time-series components
 # https://www.quantstart.com/articles/Johansen-Test-for-Cointegrating-Time-Series-Analysis-in-R/
 
 # Estimating VECM with cajorls() and specified rank from teststatistic
-subset_2.vecm <- cajorls(subset_2.coint, r = 3)
+subset_2.vecm <- cajorls(subset_2.coint, r = 4)
 summary(subset_2.vecm$rlm)
 # Coeffs (should be normalized)
 subset_2.vecm$rlm$coefficients
@@ -991,10 +1004,19 @@ subset_2.coint_ts3 <- subset_2.vecm$beta[1,3]*subset_2.xts$DA_Price_DE + subset_
   subset_2.vecm$beta[6,3]
 adf.test(subset_2.coint_ts3)
 plot(subset_2.coint_ts3)
-# All 3 seem to be stationary :)
+# (4th) cointegration vector
+subset_2.coint_ts4 <- subset_2.vecm$beta[1,4]*subset_2.xts$DA_Price_DE + subset_2.vecm$beta[2,4]*subset_2.xts$forecast_residual_load +
+  subset_2.vecm$beta[3,4]*subset_2.xts$Temperature + subset_2.vecm$beta[4,4]*subset_2.xts$GHI + subset_2.vecm$beta[5,4]*subset_2.xts$solar_production +
+  subset_2.vecm$beta[6,4]
+adf.test(subset_2.coint_ts4)
+plot(subset_2.coint_ts4)
+# All 4 are stationary
+# But 4th seems to be the same as GHI. Why?
+
 # Maybe in the other setting one of the variables itself was one of the cointegrating vectors
 # -> test?!
 # Or would one directly see it since then one of the vectors in beta must be a unit vector??
+# MAYBE IT WAS B/C ONE OF THE VARS WERE NOT STATIONARY AFTER 1 DIFF
 
 # Alternative: Estimating VECM with VECM()-function
 #VECM_VECM <- VECM(subset_2.xts, lag = no_lags_subset-1, r = 1, estim = "ML")
@@ -1006,7 +1028,7 @@ plot(subset_2.coint_ts3)
 # To use normality.test() we need to estimate vec2var
 # (restricted VECM)
 # the VAR representation of a VECM from ca.jo
-subset_2.VAR <- vec2var(subset_2.coint, r=3)
+subset_2.VAR <- vec2var(subset_2.coint, r=4)
 subset_2.normtest <- normality.test(subset_2.VAR, multivariate.only = FALSE)
 subset_2.pvals_res <- data.frame(matrix(ncol = 1, nrow = dim(subset_2.xts)[2]+1))
 colnames(subset_2.pvals_res) <- "p-value"
@@ -1032,7 +1054,7 @@ for (i in 1:dim(subset_2.normtest$resid)[2]) {
 # BUILD IT FROM HERE: https://stackoverflow.com/questions/64289992/vecm-in-r-testing-weak-exogeneity-and-imposing-restrictions
 # restriction matrix:
 DA <- matrix(c(1,0,0,0,0,1,0,0), c(4,2))
-exogeneity_test <- alrtest(subset_2.coint, A=DA, r=2)
+exogeneity_test <- alrtest(subset_2.coint, A=DA, r=4)
 summary(exogeneity_test)
 
 
@@ -1107,4 +1129,101 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 # NEXT STEPS:
 # Tests from paper (cointegration one of the ts, weak exogeneity, ...)
+
+
+
+
+
+
+# Different VECM approach
+data.lags <- VARselect(data.xts, lag.max = 10, type = "const")
+data.lags$selection 
+data.lags <- as.numeric(data.lags$selection[1])
+
+X = VECM(data.xts, lag=data.lags-1, include="const", estim="ML") 
+rank.test(X)
+
+r <- rank.test(VECM(data.xts, include = "const", estim = "ML", lag = data.lags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
+
+X <- VECM(data.xts, include = "const", estim = "ML", lag = data.lags-1, r = r$r, LRinclude = "none")
+
+# How the models look like with different cointegration ranks:
+# https://www.r-bloggers.com/2021/12/vector-error-correction-model-vecm-using-r/
+
+X.Pi <- coefPI(X) # Pi = alpha*beta'
+
+# Impulse response function
+irf(X)
+
+# normality test
+data.res <- X$residuals
+data.normtest <- normality.test(X, multivariate.only = FALSE)
+
+
+# LiNGAM analysis
+# Note: res$Bpruned is transpose of adjacency matrix
+data.lingam <- lingam(data.res)
+as(data.lingam, "amat")
+data.B_null <- t(data.lingam$Bpruned)
+colnames(data.B_null) <- names(data.xts)
+rownames(data.B_null) <- names(data.xts)
+
+# B_0: The instantaneous causal effects
+# Plotting the results
+data.graph_inst <- graph_from_adjacency_matrix(
+  data.B_null,
+  weighted = TRUE
+)
+
+# Plot 2 PDF
+pdf(file = "Plots/My Plot.pdf",   # The directory you want to save the file in
+    width = 10, # The width of the plot in inches
+    height = 10) # The height of the plot in inches
+# Or:
+#png("my_plot.png", 600, 600)
+plot.igraph(data.graph_inst, layout=layout.reingold.tilford, edge.color = "grey53", 
+            edge.arrow.size=0.01, vertex.size = 15, vertex.label.color="black", 
+            vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 0.5, 
+            edge.label = round(E(data.graph_inst)$weight,3), edge.label.cex = 0.45, edge.label.color = "brown")
+
+dev.off()
+
+library(visNetwork)
+library(htmlwidgets)
+saveWidget(visIgraph(data.graph_inst), file = "Plots/causalrelationships.html", title = "TEST")
+
+
+
+
+# New approach: Do they agree?
+# Estimating VECM with cajorls() and specified rank from teststatistic
+data.coint <- ca.jo(data.xts, type = "trace", ecdet = "const", spec = "transitory", K = data.lags, dumvar = NULL)
+data.vecm <- cajorls(data.coint, r = r$r)
+summary(data.vecm$rlm)
+
+data.vec2var <- vec2var(data.coint, r=r$r)
+data.normtest <- normality.test(data.vec2var, multivariate.only = FALSE)
+
+# LiNGAM analysis
+# Note: res$Bpruned is transpose of adjacency matrix
+data.res2 <- data.vec2var$resid
+data.lingam2 <- lingam(data.res2)
+as(data.lingam2, "amat")
+data.B_null.2 <- t(data.lingam2$Bpruned)
+colnames(data.B_null.2) <- names(data.xts)
+rownames(data.B_null.2) <- names(data.xts)
+
+# B_0: The instantaneous causal effects
+# Plotting the results
+data2.graph_inst <- graph_from_adjacency_matrix(
+  data.B_null.2,
+  weighted = TRUE
+)
+plot.igraph(data2.graph_inst, layout=layout.reingold.tilford, edge.color = "grey53", 
+            edge.arrow.size=0.01, vertex.size = 15, vertex.label.color="black", 
+            vertex.label.dist=3.5, vertex.color="tomato", vertex.label.cex = 0.5, 
+            edge.label = round(E(data2.graph_inst)$weight,3), edge.label.cex = 0.45, edge.label.color = "brown")
+
+saveWidget(visIgraph(data.graph_inst), file = "Plots/causalrelationships2.html", title = "TEST")
+
 
