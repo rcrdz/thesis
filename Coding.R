@@ -1334,7 +1334,7 @@ for(i in 1:complete.nlags){
 }
 # use a cutoff in effect size as our signifcance threshold
 # Remove all effects from B_tau that are smaller in abs. value than 70% abs. value quantile of all elements in B_1
-complete.std.B.threshold <- quantile(abs(complete.std.B_list[[1]]), probs = 0.7)
+complete.std.B.threshold <- quantile(abs(complete.std.B_list[[1]]), probs = 0.87)
 for(i in 1:length(complete.std.B_list)){
   complete.std.B_list[[i]][which(abs(complete.std.B_list[[i]]) < complete.std.B.threshold)] <- 0
 }
@@ -1363,8 +1363,8 @@ test.visn$edges$value <- test.visn$edges$weight
 visNetwork(test.visn$nodes, test.visn$edges)
 # tkplot()
  
-
-
+# THERE MUST BE A MISTAKE... Saved VisPlot is different... (see temperature)
+# Zudem hat sich der threshold veränder, war vorher 0.11... warum?
 
 
 # Plot to PDF
