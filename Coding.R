@@ -25,7 +25,6 @@ library(visNetwork)
 library(htmlwidgets)
 
 
-
 #source("GrangerTests.R")
 #source("ConditionalGrangerCausality.R")
 
@@ -147,17 +146,17 @@ cat("--------------------------", "VARIABLES 'STARTING LATER'", "---------------
 # Positive variables
 strictly_positives.xts <- xts(order.by=index(data.xts))
 for (i in 1:dim(data.xts)[2]){
-  if (colSums(data.xts[first_nonzero[i,]:dim(data.xts)[1], colnames(data.xts)[i]]<=0) == 0){
+  if (colSums(data.xts[first_nonzero[i,]:dim(data.xts)[1], i]<=0) == 0){
     strictly_positives.xts <- cbind(strictly_positives.xts, data.xts[,i])
   }
 }
 cat("---------------------------", "STRICTLY POSITIVE VARIABLES", "---------------------------", names(strictly_positives.xts), "---------------------------", paste("total:", dim(strictly_positives.xts)[2], "/", dim(data.xts)[2]), sep='\n')
 
-# Non-negative variables
+# Non-negative variables (|R^+_0)
 non_negatives.xts = data.xts[,colSums(data.xts<0)==0]
 cat("----------------------", "NON-NEGATIVE VARIABLES", "----------------------", names(non_negatives.xts), "----------------------", paste("total:", dim(non_negatives.xts)[2], "/", dim(data.xts)[2]), sep='\n')
 
-# Variables which also attain negative values
+# Variables which attain negative AND positive values
 negatives.xts <- data.xts[,! names(data.xts) %in% names(non_negatives.xts)]
 cat("-----------------------------------------", "VARIABLES WITH NEGATIVE AND POSITIVE VALS", "-----------------------------------------", names(negatives.xts), "-----------------------------------------", paste("total:", dim(negatives.xts)[2], "/", dim(data.xts)[2]), sep='\n')
 
@@ -1138,28 +1137,60 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 # Complete dataset ---------------------------------------------
+complete.xts <- data.xts
+# logit-transform variables with values in 0% - 100%: NG_storage
+complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
+# log-transform strictly positives
+for (i in names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]){
+  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i])
+}
+# log-transform the ones with zeros and negatives
+# (Value + Maximum Negative value + 1)
+for (i in names(complete.xts[,! names(complete.xts) %in% names(strictly_positives.xts)])){
+  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
+                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
+}
+
+# Estimating seasonality components 
+complete.lms <- lapply(1:dim(complete.xts)[2], function(x) lm(complete.xts[first_nonzero[x,1]:dim(complete.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + sin(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
+complete.fitted.vals <- sapply(complete.lms, fitted)
+for(i in 1:dim(complete.xts)[2]){
+  if (length(complete.fitted.vals[[i]]) < dim(complete.xts)[1]){
+    complete.fitted.vals[[i]] <- c(rep(0, first_nonzero[i,1]-1), complete.fitted.vals[[i]])
+  }
+}
+complete.fitted.vals <- data.frame(complete.fitted.vals)
+colnames(complete.fitted.vals) <- colnames(complete.xts)
+complete.fitted.vals <- xts(complete.fitted.vals, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+
 # Checking seasonality
-for(i in 1:dim(data.xts)[2]) {  
+for(i in 1:dim(complete.xts)[2]) {  
   abc <- ggplot() + 
-    geom_line(data = data.xts, aes(x = time(data.xts), y = as.numeric(data.xts[,i])), color = "black") +
-    geom_line(data = fitted_vals, aes(x = time(data.xts), y = as.numeric(fitted_vals[,i])), color = "red") +
+    geom_line(data = complete.xts, aes(x = time(complete.xts), y = as.numeric(complete.xts[,i])), color = "black") +
+    geom_line(data = complete.fitted.vals, aes(x = time(complete.xts), y = as.numeric(complete.fitted.vals[,i])), color = "red") +
     xlab('Date') +
-    ylab(colnames(data.xts)[i]) +
+    ylab(colnames(complete.xts)[i]) +
     theme(axis.text.x=element_text(angle=60, hjust=1))
   print(abc)
 }
+
+# Kick out Luxembourg_import: Only 4 values
+complete.xts <- subset(complete.xts, select=-Luxembourg_import)
+
 # Variables which seem NOT to have seasonality:
 # Belgium_import, Belgium_export, Norway_import, Norway_export,
-# Poland_import, Luxembourg_import, Netherlands_import, Netherlands_export,
+# Poland_import, Netherlands_import, Netherlands_export,
 # Sweden_4_P_spread_to_DE, DK_2_P_spread_to_DE, COAL_API2, EUA_price, NG_TTF,
 # Sweden_import, Sweden_export
 complete.remove <- c("Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
-                     "Poland_import", "Luxembourg_import", "Netherlands_import", "Netherlands_export",
+                     "Poland_import", "Netherlands_import", "Netherlands_export",
                      "Sweden_4_P_spread_to_DE", "DK_2_P_spread_to_DE", "COAL_API2", "EUA_price",
                      "NG_TTF", "Sweden_import", "Sweden_export")
-complete.xts <- data.xts
 for (i in names(complete.xts[, ! names(complete.xts) %in% complete.remove])){
-  complete.xts[,i] <- data.xts[,i] - fitted_vals[,i]
+  complete.xts[,i] <- complete.xts[,i] - complete.fitted.vals[,i]
 }
 
 # Plots after deseasonalization
@@ -1167,7 +1198,7 @@ for(i in 1:dim(complete.xts)[2]) {
   abc <- ggplot() + 
     geom_line(data = complete.xts, aes(x = time(data.xts), y = as.numeric(complete.xts[,i])), color = "black") +
     xlab('Date') +
-    ylab(colnames(data.xts)[i]) +
+    ylab(colnames(complete.xts)[i]) +
     theme(axis.text.x=element_text(angle=60, hjust=1))
   print(abc)
 }
@@ -1244,8 +1275,8 @@ for (i in 1:dim(complete.stationarity)[1]) {
 }
 
 # Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
-# NG_TTF, EUA_price, COAL_API2
-complete.diff <- c("NG_TTF", "EUA_price", "COAL_API2")
+# NG_TTF, COAL_API2
+complete.diff <- c("NG_TTF", "COAL_API2")
 for (i in complete.diff){
   complete.xts[,i] <- diff(complete.xts[,i], 1)
   colnames(complete.xts)[colnames(complete.xts) == i] <- paste0(i, ".diff")
@@ -1363,9 +1394,10 @@ test.visn$edges$value <- test.visn$edges$weight
 visNetwork(test.visn$nodes, test.visn$edges)
 # tkplot()
  
-# THERE MUST BE A MISTAKE... Saved VisPlot is different... (see temperature)
-# Zudem hat sich der threshold veränder, war vorher 0.11... warum?
 
+
+
+###---------------------------------------------------------
 
 # Plot to PDF
 pdf(file = "Plots/My Plot.pdf",   # The directory you want to save the file in
