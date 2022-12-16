@@ -305,11 +305,11 @@ seasonplot(ts(data_raw$actual_load, frequency = 365.25))
 
 # Estimating seasonality-components with Fourier (Energy paper)
 #t <- seq(from = 1, to = dim(data.xts)[1], by = 1)
-my_lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[first_nonzero[x,1]:dim(data.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+data.lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[first_nonzero[x,1]:dim(data.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
                                                     + cos(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
                                                     + sin(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
                                                     + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
-fitted_vals <- sapply(my_lms, fitted)
+fitted_vals <- sapply(data.lms, fitted)
 for(i in 1:dim(data.xts)[2]){
   if (length(fitted_vals[[i]]) < dim(data.xts)[1]){
     fitted_vals[[i]] <- c(rep(0, first_nonzero[i,1]-1), fitted_vals[[i]])
@@ -1138,59 +1138,79 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 # Complete dataset ---------------------------------------------
 complete.xts <- data.xts
-# logit-transform variables with values in 0% - 100%: NG_storage
-complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
-# log-transform strictly positives
-for (i in names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]){
-  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i])
-}
-# log-transform the ones with zeros and negatives
-# (Value + Maximum Negative value + 1)
-for (i in names(complete.xts[,! names(complete.xts) %in% names(strictly_positives.xts)])){
-  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
-                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
-}
 
-# Estimating seasonality components 
-complete.lms <- lapply(1:dim(complete.xts)[2], function(x) lm(complete.xts[first_nonzero[x,1]:dim(complete.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + cos(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + sin(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + cos(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
-complete.fitted.vals <- sapply(complete.lms, fitted)
-for(i in 1:dim(complete.xts)[2]){
-  if (length(complete.fitted.vals[[i]]) < dim(complete.xts)[1]){
-    complete.fitted.vals[[i]] <- c(rep(0, first_nonzero[i,1]-1), complete.fitted.vals[[i]])
-  }
-}
-complete.fitted.vals <- data.frame(complete.fitted.vals)
-colnames(complete.fitted.vals) <- colnames(complete.xts)
-complete.fitted.vals <- xts(complete.fitted.vals, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
-
-# Checking seasonality
+# plot data
 for(i in 1:dim(complete.xts)[2]) {  
   abc <- ggplot() + 
-    geom_line(data = complete.xts, aes(x = time(complete.xts), y = as.numeric(complete.xts[,i])), color = "black") +
-    geom_line(data = complete.fitted.vals, aes(x = time(complete.xts), y = as.numeric(complete.fitted.vals[,i])), color = "red") +
+    geom_line(data = complete.xts, aes(x = time(data.xts), y = as.numeric(complete.xts[,i])), color = "black") +
     xlab('Date') +
     ylab(colnames(complete.xts)[i]) +
     theme(axis.text.x=element_text(angle=60, hjust=1))
   print(abc)
 }
 
-# Kick out Luxembourg_import: Only 4 values
-complete.xts <- subset(complete.xts, select=-Luxembourg_import)
+# Detecting exponentially growing trend
+# if no exponentially growing trend => No need for log
+# Which ones seem to have exponential trend?
+# DA_Price_DE, COAL_API2, EUA_price, NG_TTF
+
+# logit-transform variables with values in 0% - 100%: NG_storage
+#complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
+# Is it reasonable? No trend visible..
+
+# log-transform strictly positives
+#for (i in names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]){
+#  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i])
+#}
+# log-transform the ones with zeros and negatives
+# (Value + Maximum Negative value + 1)
+#for (i in names(complete.xts[,! names(complete.xts) %in% names(strictly_positives.xts)])){
+#  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
+#                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
+#}
+complete.xts$DA_Price_DE <- log(complete.xts[first_nonzero["DA_Price_DE",]:dim(complete.xts)[1], "DA_Price_DE"] + abs(min(data.xts[,"DA_Price_DE"][data.xts[,"DA_Price_DE"]<=0])) +1)
+complete.xts$COAL_API2 <- log(complete.xts[first_nonzero["COAL_API2",]:dim(complete.xts)[1], "COAL_API2"])
+complete.xts$EUA_price <- log(complete.xts[first_nonzero["EUA_price",]:dim(complete.xts)[1], "EUA_price"])
+complete.xts$NG_TTF <- log(complete.xts[first_nonzero["NG_TTF",]:dim(complete.xts)[1], "NG_TTF"])
+
+# Estimating seasonality components 
+complete.lms <- lapply(1:dim(complete.xts)[2], function(x) lm(complete.xts[first_nonzero[x,1]:dim(complete.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + sin(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
+complete.fitted <- sapply(complete.lms, fitted)
+for(i in 1:dim(complete.xts)[2]){
+  if (length(complete.fitted[[i]]) < dim(complete.xts)[1]){
+    complete.fitted[[i]] <- c(rep(0, first_nonzero[i,1]-1), complete.fitted[[i]])
+  }
+}
+complete.fitted <- data.frame(complete.fitted)
+colnames(complete.fitted) <- colnames(complete.xts)
+complete.fitted <- xts(complete.fitted, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+
+# Checking seasonality
+for(i in 1:dim(complete.xts)[2]) {  
+  abc <- ggplot() + 
+    geom_line(data = complete.xts, aes(x = time(complete.xts), y = as.numeric(complete.xts[,i])), color = "black") +
+    geom_line(data = complete.fitted, aes(x = time(complete.xts), y = as.numeric(complete.fitted[,i])), color = "red") +
+    xlab('Date') +
+    ylab(colnames(complete.xts)[i]) +
+    theme(axis.text.x=element_text(angle=60, hjust=1))
+  print(abc)
+}
 
 # Variables which seem NOT to have seasonality:
 # Belgium_import, Belgium_export, Norway_import, Norway_export,
-# Poland_import, Netherlands_import, Netherlands_export,
-# Sweden_4_P_spread_to_DE, DK_2_P_spread_to_DE, COAL_API2, EUA_price, NG_TTF,
-# Sweden_import, Sweden_export
+# Poland_import, Poland_export, France_export, Netherlands_import, Netherlands_export,
+# Sweden_4_P_spread_to_DE, DK_2_P_spread_to_DE, COAL_API2, EUA_price, NG_TTF, Denmark_import
+# Sweden_import, Sweden_export, Luxembourg_import, Denmark_export
 complete.remove <- c("Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
-                     "Poland_import", "Netherlands_import", "Netherlands_export",
+                     "Poland_import", "Poland_export", "France_export", "Netherlands_import", "Netherlands_export",
                      "Sweden_4_P_spread_to_DE", "DK_2_P_spread_to_DE", "COAL_API2", "EUA_price",
-                     "NG_TTF", "Sweden_import", "Sweden_export")
+                     "NG_TTF", "Sweden_import", "Sweden_export", "Luxembourg_import", "Denmark_import",
+                     "Denmark_export")
 for (i in names(complete.xts[, ! names(complete.xts) %in% complete.remove])){
-  complete.xts[,i] <- complete.xts[,i] - complete.fitted.vals[,i]
+  complete.xts[,i] <- complete.xts[,i] - complete.fitted[,i]
 }
 
 # Plots after deseasonalization
@@ -1202,6 +1222,9 @@ for(i in 1:dim(complete.xts)[2]) {
     theme(axis.text.x=element_text(angle=60, hjust=1))
   print(abc)
 }
+
+# Kick out Luxembourg_import: Only 4 values
+complete.xts <- subset(complete.xts, select=-Luxembourg_import)
 
 # p-values for tests (+differences)
 complete.pvals_tests <- data.frame(matrix(ncol = 7, nrow = length(colnames(complete.xts))))
@@ -1328,7 +1351,7 @@ for (i in 1:dim(complete.normtest$resid)[2]) {
 # Impulse responses
 irf_all <- irf(complete.var)
 par(ask=F)
-plot(irf_all)
+#plot(irf_all)
 
 # Standardize variables before DAG analysis
 complete.xts.std <- scale(complete.xts)
