@@ -1423,6 +1423,108 @@ visNetwork(test.visn$nodes, test.visn$edges)
 
 
 
+
+
+# Dataset without zero-inflated variables ---------------------------------------------
+no_zeroinfl.xts <- complete.xts[ , -which(names(complete.xts) %in% rownames(zero_infl_vars))]
+
+# Estimate number of lags needed
+no_zeroinfl.nlags <- VARselect(no_zeroinfl.xts, lag.max = 5, type = "const")
+no_zeroinfl.nlags$selection 
+no_zeroinfl.nlags <- as.numeric(no_zeroinfl.nlags$selection[1])
+# alternative: lags.select()
+
+# Estimate number of cointegrating vectors
+no_zeroinfl.rank <- rank.test(VECM(no_zeroinfl.xts, include = "const", estim = "ML", lag = no_zeroinfl.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
+no_zeroinfl.rank
+no_zeroinfl.rank <- no_zeroinfl.rank$r
+
+# Estimating VECM with cajorls() and specified rank from
+no_zeroinfl.coint <- ca.jo(no_zeroinfl.xts, type = "eigen", ecdet = "const", spec = "transitory", K = no_zeroinfl.nlags, dumvar = NULL)
+no_zeroinfl.vecm <- cajorls(no_zeroinfl.coint, r = no_zeroinfl.rank)
+#summary(no_zeroinfl.vecm$rlm)
+
+# Normality test on residuals
+no_zeroinfl.var <- vec2var(no_zeroinfl.coint, r=no_zeroinfl.rank)
+no_zeroinfl.normtest <- normality.test(no_zeroinfl.var, multivariate.only = FALSE)
+
+no_zeroinfl.pvals_res <- data.frame(matrix(ncol = 1, nrow = dim(no_zeroinfl.xts)[2]+1))
+colnames(no_zeroinfl.pvals_res) <- "p-value"
+rownames(no_zeroinfl.pvals_res) <- c(colnames(no_zeroinfl.xts),"Multivariate")
+for (i in 1:dim(no_zeroinfl.xts)[2]){
+  no_zeroinfl.pvals_res[i,1] <- as.numeric(no_zeroinfl.normtest$jb.uni[[paste0("resids of ", names(no_zeroinfl.xts)[i])]]$p.value)
+}
+no_zeroinfl.pvals_res[dim(no_zeroinfl.xts)[2]+1,1] <- as.numeric(no_zeroinfl.normtest$jb.mul$JB$p.value)
+
+# Autocorrelation between residuals?
+for (i in 1:dim(no_zeroinfl.normtest$resid)[2]) {
+  acf2(no_zeroinfl.normtest$resid[,i], main = paste("ACF and PACF of residuals of", colnames(no_zeroinfl.xts)[i]))
+}
+# showes no significant auto-correlation between the residuals
+# => assumption of independent and non-Gaussian residuals is not unreasonable
+# => LiNGAM can be used
+
+# TESTS [!]
+# https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
+
+# Impulse responses
+no_zeroinfl.var.irf_all <- irf(no_zeroinfl.var)
+par(ask=F)
+#plot(irf_all)
+
+# Standardize variables before DAG analysis
+no_zeroinfl.xts.std <- scale(no_zeroinfl.xts)
+
+# Procedure p. 7
+# VECM 2 VAR:
+# https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
+# 1: VECM
+no_zeroinfl.std.coint <- ca.jo(no_zeroinfl.xts.std, type = "eigen", ecdet = "const", spec = "transitory", K = no_zeroinfl.nlags, dumvar = NULL)
+no_zeroinfl.std.vecm <- cajorls(no_zeroinfl.std.coint, r = no_zeroinfl.rank)
+no_zeroinfl.std.pi <- coefPI(no_zeroinfl.std.vecm)
+no_zeroinfl.std.alpha <- coefA(no_zeroinfl.std.vecm)
+no_zeroinfl.std.beta <- coefB(no_zeroinfl.std.vecm)
+# How to get the gammas and mu? gammes has only 1 matrix (!)
+
+# 2: VAR
+no_zeroinfl.std.var <- vec2var(no_zeroinfl.std.coint, r=no_zeroinfl.rank)
+no_zeroinfl.std.M_list <- no_zeroinfl.std.var$A # M_list hast 2 matrices (since nlags=2)
+
+# 3: Residuals of VAR
+no_zeroinfl.std.var.res <- no_zeroinfl.std.var$resid
+
+# 4: LiNGAM
+no_zeroinfl.std.lingam <- lingam(no_zeroinfl.std.var.res)
+#as(no_zeroinfl.std.lingam, "amat")
+no_zeroinfl.std.B_0 <- t(no_zeroinfl.std.lingam$Bpruned) # Bpruned is transpose of adj.matr.
+colnames(no_zeroinfl.std.B_0) <- names(no_zeroinfl.xts.std)
+rownames(no_zeroinfl.std.B_0) <- names(no_zeroinfl.xts.std)
+
+# 5: Matrices of lagged causal effects, B_tau
+no_zeroinfl.std.B_list <- list()
+for(i in 1:no_zeroinfl.nlags){
+  no_zeroinfl.std.B_list[[i]] <- (diag(dim(no_zeroinfl.xts.std)[2])-no_zeroinfl.std.B_0)%*%as.matrix(no_zeroinfl.std.M_list[[i]])
+}
+# use a cutoff in effect size as our signifcance threshold
+# Remove all effects from B_tau that are smaller in abs. value than 70% abs. value quantile of all elements in B_1
+no_zeroinfl.std.B.threshold <- quantile(abs(no_zeroinfl.std.B_list[[1]]), probs = 0.87)
+for(i in 1:length(no_zeroinfl.std.B_list)){
+  no_zeroinfl.std.B_list[[i]][which(abs(no_zeroinfl.std.B_list[[i]]) < no_zeroinfl.std.B.threshold)] <- 0
+}
+
+
+# Graphical representation of B_0
+no_zeroinfl.std.graph.B_0 <- graph_from_adjacency_matrix(
+  no_zeroinfl.std.B_0,
+  weighted = TRUE
+)
+visIgraph(no_zeroinfl.std.graph.B_0)
+
+
+
+
+
+
 ###---------------------------------------------------------
 
 # Plot to PDF
