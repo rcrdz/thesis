@@ -169,11 +169,17 @@ for (i in 1:dim(zeros_count)[1]) {
   #zeros_count[1,i] <- sum(data.xts[,i]==0)
   zeros_count[i,1] <- sum(data.xts[first_nonzero[i,]:dim(data.xts)[1],i]==0)
 }
+# Histograms of variables which contain at least 1 zero (removed zeros before "start")
+for (i in 1:dim(zero_infl_vars)[1]) {
+  hist(data.xts[first_nonzero[rownames(subset(zeros_count, `# of Zeros` != 0))[i],]:dim(data.xts)[1], rownames(subset(zeros_count, `# of Zeros` != 0))[i]], xlab = rownames(subset(zeros_count, `# of Zeros` != 0))[i], main = paste("Histogram of ", rownames(subset(zeros_count, `# of Zeros` != 0))[i]), probability = TRUE)
+}
+# Which ones seem not zero-inflated?
+
 # Zero-inflated variables
-zero_infl_vars <- subset(zeros_count, `# of Zeros` != 0)
+zero_infl_vars <- subset(zeros_count, `# of Zeros` > 30)
 cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", rownames(zero_infl_vars), "-----------------------", paste("total:", dim(zero_infl_vars)[1], "/", dim(data.xts)[2]), sep='\n')
 # Non-Zero-inflated variables
-non_zero_infl_vars <- subset(zeros_count, `# of Zeros` == 0)
+non_zero_infl_vars <- subset(zeros_count, `# of Zeros` <= 30)
 cat("---------------------------", "NOT ZERO-INFLATED VARIABLES", "---------------------------", rownames(non_zero_infl_vars), "---------------------------", paste("total:", dim(non_zero_infl_vars)[1], "/", dim(data.xts)[2]), sep='\n')
 
 # Histograms zero-inflated variables (removed zeros before "start")
@@ -1155,7 +1161,7 @@ for(i in 1:dim(complete.xts)[2]) {
 # DA_Price_DE, COAL_API2, EUA_price, NG_TTF
 
 # logit-transform variables with values in 0% - 100%: NG_storage
-#complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
+complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
 # Is it reasonable? No trend visible..
 
 # log-transform strictly positives
@@ -1168,9 +1174,11 @@ for(i in 1:dim(complete.xts)[2]) {
 #  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
 #                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
 #}
+
+# log-transform the variables which have exponential trend
 complete.xts$DA_Price_DE <- log(complete.xts[first_nonzero["DA_Price_DE",]:dim(complete.xts)[1], "DA_Price_DE"] + abs(min(data.xts[,"DA_Price_DE"][data.xts[,"DA_Price_DE"]<=0])) +1)
 complete.xts$COAL_API2 <- log(complete.xts[first_nonzero["COAL_API2",]:dim(complete.xts)[1], "COAL_API2"])
-complete.xts$EUA_price <- log(complete.xts[first_nonzero["EUA_price",]:dim(complete.xts)[1], "EUA_price"])
+#complete.xts$EUA_price <- log(complete.xts[first_nonzero["EUA_price",]:dim(complete.xts)[1], "EUA_price"])
 complete.xts$NG_TTF <- log(complete.xts[first_nonzero["NG_TTF",]:dim(complete.xts)[1], "NG_TTF"])
 
 # Estimating seasonality components 
@@ -1200,15 +1208,11 @@ for(i in 1:dim(complete.xts)[2]) {
 }
 
 # Variables which seem NOT to have seasonality:
-# Belgium_import, Belgium_export, Norway_import, Norway_export,
-# Poland_import, Poland_export, France_export, Netherlands_import, Netherlands_export,
-# Sweden_4_P_spread_to_DE, DK_2_P_spread_to_DE, COAL_API2, EUA_price, NG_TTF, Denmark_import
-# Sweden_import, Sweden_export, Luxembourg_import, Denmark_export
-complete.remove <- c("Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
-                     "Poland_import", "Poland_export", "France_export", "Netherlands_import", "Netherlands_export",
-                     "Sweden_4_P_spread_to_DE", "DK_2_P_spread_to_DE", "COAL_API2", "EUA_price",
-                     "NG_TTF", "Sweden_import", "Sweden_export", "Luxembourg_import", "Denmark_import",
-                     "Denmark_export")
+# Zero-inflated data should not get seasnonality removed (?)
+# Otherwise zero-inflation disappears (?)
+complete.remove <- unique(c(rownames(zero_infl_vars), "Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
+                     "Poland_import", "France_export", "Netherlands_import", "Sweden_4_P_spread_to_DE", 
+                     "COAL_API2", "EUA_price", "NG_TTF", "DA_Price_DE"))
 for (i in names(complete.xts[, ! names(complete.xts) %in% complete.remove])){
   complete.xts[,i] <- complete.xts[,i] - complete.fitted[,i]
 }
@@ -1298,8 +1302,7 @@ for (i in 1:dim(complete.stationarity)[1]) {
 }
 
 # Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
-# NG_TTF, COAL_API2
-complete.diff <- c("NG_TTF", "COAL_API2")
+complete.diff <- c("NG_TTF", "EUA_price","COAL_API2")
 for (i in complete.diff){
   complete.xts[,i] <- diff(complete.xts[,i], 1)
   colnames(complete.xts)[colnames(complete.xts) == i] <- paste0(i, ".diff")
