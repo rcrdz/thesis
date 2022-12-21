@@ -710,7 +710,7 @@ for(i in 1:dim(complete.xts)[2]) {
 # Zero-inflated data should not get seasonality removed (?)
 # Otherwise zero-inflation disappears (?)
 complete.remove <- unique(c(names(zero_infl_vars.xts), "Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
-                            "Poland_import", "France_export", "Netherlands_import", "Sweden_4_P_spread_to_DE", 
+                            "Poland_import", "France_export", "Netherlands_import", "Netherlands_export", "Sweden_4_P_spread_to_DE", 
                             "COAL_API2", "EUA_price", "NG_TTF", "DA_Price_DE"))
 for (i in names(complete.xts[, ! names(complete.xts) %in% complete.remove])){
   complete.xts[,i] <- complete.xts[,i] - complete.fitted[,i]
@@ -1956,33 +1956,69 @@ dev.off()
 
 
 # Playing around with VEC to VAR transformation
-testset.xts <- data.xts[,c("EUA_price", "COAL_API2")]
+testset.xts <- data.xts[,c("NG_TTF", "COAL_API2", "Temperature", "DewPoint", "Humidity",
+                           "Wind_Speed", "GHI", "wind_offshore_production", "wind_onshore_production",
+                           "solar_production", "gas_production")]
+testset.xts <- scale(testset.xts)
+# Estimate number of lags needed
+testset.nlags <- VARselect(testset.xts, lag.max = 10, type = "const")
+testset.nlags$selection 
+testset.nlags <- as.numeric(testset.nlags$selection[1])
+
 # Estimate number of cointegrating vectors
-testset.rank <- rank.test(VECM(testset.xts, include = "none", estim = "ML", lag = 2-1, LRinclude = "none"), cval = 0.01, type = "eigen")
+testset.rank <- rank.test(VECM(testset.xts, include = "none", estim = "ML", lag = testset.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
 testset.rank
 testset.rank <- testset.rank$r
 
 # Estimating VECM with cajorls() and specified rank from
-testset.coint <- ca.jo(testset.xts, type = "eigen", ecdet = "none", spec = "transitory", K = 2, dumvar = NULL)
+testset.coint <- ca.jo(testset.xts, type = "eigen", ecdet = "none", spec = "transitory", K = testset.nlags, dumvar = NULL)
 testset.vecm <- cajorls(testset.coint, r = testset.rank)
 
 # VAR
 testset.var <- vec2var(testset.coint, r=testset.rank)
 
-testset.var2 <- VAR(testset.xts, p = 2, type = "const")
-Bcoef(testset.var2)
+fitsvar <- xts(fitted(testset.var), order.by=index(data.xts)[2:(dim(data.xts)[1]-testset.nlags+1)])
+plot(fitsvar[,9])
+
+resids <- xts(residuals(testset.var), order.by=index(data.xts)[2:(dim(data.xts)[1]-testset.nlags+1)])
+lines(resids[,9], col = "red")
 
 
-fitsvar <- xts(fitted(testset.var2), order.by=index(data.xts)[2:2480])
-plot(fitsvar)
+# 3: Residuals of VAR
+testset.var.res <- testset.var$resid
 
-resids <- xts(residuals(testset.var), order.by=index(data.xts)[2:2480])
-plot(resids)
+# 4: LiNGAM
+testset.lingam <- lingam(testset.var.res)
+testset.B_0 <- t(testset.lingam$Bpruned) # Bpruned is transpose of adj.matr.
+colnames(testset.B_0) <- names(testset.xts)
+rownames(testset.B_0) <- names(testset.xts)
+
+# Graphical representation of B_0
+testset.graph.B_0 <- graph_from_adjacency_matrix(
+  testset.B_0,
+  weighted = TRUE
+)
+visIgraph(testset.graph.B_0)
+
+
   
-###
+#############
 x <- xts(fitted(complete.std.var), order.by = index(data.xts)[2:2479])
-plot(complete.xts.std[,1])
-lines(x[,1], col = "red")
+y <- xts(complete.std.var$resid, order.by = index(data.xts)[2:2479])
+plot(complete.xts.std[,41])
+lines(x[,41], col = "red")
+lines(y[,41], col = "blue")
+
+
+#######################
+
+
+
+
+
+
+
+
   
 
   
