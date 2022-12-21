@@ -84,7 +84,7 @@ data.ts <-ts_ts(data.xts)
 ################
 ### Plotting ###
 ################
-# a few plots..
+# A few plots..
 # Plotting: https://rpubs.com/odenipinedo/visualizing-time-series-data-in-R
 # Example: DK_2_P_spread_to_DE
 plot(data.xts$DK_2_P_spread_to_DE, main = "DK_2_P_spread_to_DE")
@@ -139,7 +139,7 @@ for (i in 1:dim(first_nonzero)[1]) {
   first_nonzero[i,1] <- min(which(boolean == TRUE))
 }
 # Names of variables which "start later"
-cat("--------------------------", "VARIABLES 'STARTING LATER'", "--------------------------", rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1], "--------------------------", paste("total:", sum(first_nonzero != 1), "/", dim(data.xts)[2]), sep='\n')
+cat("--------------------------", "VARIABLES 'STARTING LATER'", "--------------------------", rownames(first_nonzero)[first_nonzero$`First nonzero index` >2], "--------------------------", paste("total:", sum(first_nonzero > 2), "/", dim(data.xts)[2]), sep='\n')
 
 
 ### Positive / Negative Variables ###
@@ -170,25 +170,35 @@ for (i in 1:dim(zeros_count)[1]) {
   zeros_count[i,1] <- sum(data.xts[first_nonzero[i,]:dim(data.xts)[1],i]==0)
 }
 # Histograms of variables which contain at least 1 zero (removed zeros before "start")
-for (i in 1:dim(zero_infl_vars)[1]) {
+for (i in 1:dim(subset(zeros_count, `# of Zeros` != 0))[1]) {
   hist(data.xts[first_nonzero[rownames(subset(zeros_count, `# of Zeros` != 0))[i],]:dim(data.xts)[1], rownames(subset(zeros_count, `# of Zeros` != 0))[i]], xlab = rownames(subset(zeros_count, `# of Zeros` != 0))[i], main = paste("Histogram of ", rownames(subset(zeros_count, `# of Zeros` != 0))[i]), probability = TRUE)
 }
-# Which ones seem not zero-inflated?
 
 # Zero-inflated variables
-zero_infl_vars <- subset(zeros_count, `# of Zeros` > 30)
-cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", rownames(zero_infl_vars), "-----------------------", paste("total:", dim(zero_infl_vars)[1], "/", dim(data.xts)[2]), sep='\n')
-# Non-Zero-inflated variables
-non_zero_infl_vars <- subset(zeros_count, `# of Zeros` <= 30)
-cat("---------------------------", "NOT ZERO-INFLATED VARIABLES", "---------------------------", rownames(non_zero_infl_vars), "---------------------------", paste("total:", dim(non_zero_infl_vars)[1], "/", dim(data.xts)[2]), sep='\n')
+zero_infl_vars.xts <- data.xts[,rownames(subset(zeros_count, `# of Zeros` > 30))]
+cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", names(zero_infl_vars.xts), "-----------------------", paste("total:", dim(zero_infl_vars.xts)[2], "/", dim(data.xts)[2]), sep='\n')
 
 # Histograms zero-inflated variables (removed zeros before "start")
-for (i in 1:dim(zero_infl_vars)[1]) {
-  hist(data.xts[first_nonzero[rownames(zero_infl_vars)[i],]:dim(data.xts)[1], rownames(zero_infl_vars)[i]], xlab = rownames(zero_infl_vars)[i], main = paste("Histogram of ", rownames(zero_infl_vars)[i]), probability = TRUE)
+for (i in 1:dim(zero_infl_vars.xts)[2]) {
+  hist(data.xts[first_nonzero[names(zero_infl_vars.xts)[i],]:dim(data.xts)[1], names(zero_infl_vars.xts)[i]], xlab = names(zero_infl_vars.xts)[i], main = paste("Histogram of ", names(zero_infl_vars.xts)[i]), probability = TRUE)
 }
+# Which ones seem not zero-inflated?
+# No count-data: DK_1_P_spread_to_DE, DK_2_P_spread_to_DE, France_P_spread_to_DE, 
+#                Netherlands_P_spread_to_DE, Slovenia_P_spread_to_DE, Czech_P_spread_to_DE,
+#                Austria_P_spread_to_DE, Belgium_P_spread_to_DE, physical_net_export
+zero_infl_vars.remove <- c("DK_1_P_spread_to_DE", "DK_2_P_spread_to_DE", "France_P_spread_to_DE",
+                           "Netherlands_P_spread_to_DE", "Slovenia_P_spread_to_DE", "Czech_P_spread_to_DE",
+                           "Austria_P_spread_to_DE", "Belgium_P_spread_to_DE", "physical_net_export")
+zero_infl_vars.xts <- zero_infl_vars.xts[,! names(zero_infl_vars.xts) %in% zero_infl_vars.remove]
+
+# Non-Zero-inflated variables
+non_zero_infl_vars.xts <- data.xts[,! names(data.xts) %in% names(zero_infl_vars.xts)]
+cat("---------------------------", "NOT-ZERO-INFLATED VARIABLES", "---------------------------", names(non_zero_infl_vars.xts), "---------------------------", paste("total:", dim(non_zero_infl_vars.xts)[2], "/", dim(data.xts)[2]), sep='\n')
+
+
 # Histograms "non-zero-inflated" variables (removed zeros before "start")
-for (i in 1:dim(non_zero_infl_vars)[1]) {
-  hist(data.xts[first_nonzero[rownames(non_zero_infl_vars)[i],]:dim(data.xts)[1], rownames(non_zero_infl_vars)[i]], xlab = rownames(non_zero_infl_vars)[i], main = paste("Histogram of ", rownames(non_zero_infl_vars)[i]), probability = TRUE)
+for (i in 1:dim(non_zero_infl_vars.xts)[2]) {
+  hist(data.xts[first_nonzero[names(non_zero_infl_vars.xts)[i],]:dim(data.xts)[1], names(non_zero_infl_vars.xts)[i]], xlab = names(non_zero_infl_vars.xts)[i], main = paste("Histogram of ", names(non_zero_infl_vars.xts)[i]), probability = TRUE)
 }
 
 
@@ -1160,32 +1170,32 @@ for(i in 1:dim(complete.xts)[2]) {
 # Which ones seem to have exponential trend?
 # DA_Price_DE, COAL_API2, EUA_price, NG_TTF
 
-# logit-transform variables with values in 0% - 100%: NG_storage
-complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
-# Is it reasonable? No trend visible..
+# LOGIT-TRANSFORM variables with values in 0% - 100%: NG_storage
+#complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
+# Is it reasonable? 
 
-# log-transform strictly positives
+# LOG-TRANSFORM STRICTLY POSITIVES
 #for (i in names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]){
 #  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i])
 #}
-# log-transform the ones with zeros and negatives
+# LOG-TRANSFORM variables WITH ZEROS AND NEGATIVE VAL'S
 # (Value + Maximum Negative value + 1)
 #for (i in names(complete.xts[,! names(complete.xts) %in% names(strictly_positives.xts)])){
 #  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
 #                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
 #}
 
-# log-transform the variables which have exponential trend
-complete.xts$DA_Price_DE <- log(complete.xts[first_nonzero["DA_Price_DE",]:dim(complete.xts)[1], "DA_Price_DE"] + abs(min(data.xts[,"DA_Price_DE"][data.xts[,"DA_Price_DE"]<=0])) +1)
-complete.xts$COAL_API2 <- log(complete.xts[first_nonzero["COAL_API2",]:dim(complete.xts)[1], "COAL_API2"])
+# LOG-TRANSFORM ONLY the variables which have exponential trend
+#complete.xts$DA_Price_DE <- log(complete.xts[first_nonzero["DA_Price_DE",]:dim(complete.xts)[1], "DA_Price_DE"] + abs(min(data.xts[,"DA_Price_DE"][data.xts[,"DA_Price_DE"]<=0])) +1)
+#complete.xts$COAL_API2 <- log(complete.xts[first_nonzero["COAL_API2",]:dim(complete.xts)[1], "COAL_API2"])
 #complete.xts$EUA_price <- log(complete.xts[first_nonzero["EUA_price",]:dim(complete.xts)[1], "EUA_price"])
-complete.xts$NG_TTF <- log(complete.xts[first_nonzero["NG_TTF",]:dim(complete.xts)[1], "NG_TTF"])
+#complete.xts$NG_TTF <- log(complete.xts[first_nonzero["NG_TTF",]:dim(complete.xts)[1], "NG_TTF"])
 
 # Estimating seasonality components 
-complete.lms <- lapply(1:dim(complete.xts)[2], function(x) lm(complete.xts[first_nonzero[x,1]:dim(complete.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + cos(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + sin(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + cos(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
+complete.lms <- lapply(1:dim(complete.xts)[2], function(x) lm(complete.xts[first_nonzero[names(complete.xts)[x],1]:dim(complete.xts)[1], x] ~ sin(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[names(complete.xts)[x], 1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[names(complete.xts)[x],1]+1, by = 1)/365.25) 
+                                                    + sin(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[names(complete.xts)[x],1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*2*seq(from = 1, to = dim(complete.xts)[1]-first_nonzero[names(complete.xts)[x],1]+1, by = 1)/365.25)))
 complete.fitted <- sapply(complete.lms, fitted)
 for(i in 1:dim(complete.xts)[2]){
   if (length(complete.fitted[[i]]) < dim(complete.xts)[1]){
@@ -1208,7 +1218,7 @@ for(i in 1:dim(complete.xts)[2]) {
 }
 
 # Variables which seem NOT to have seasonality:
-# Zero-inflated data should not get seasnonality removed (?)
+# Zero-inflated data should not get seasonality removed (?)
 # Otherwise zero-inflation disappears (?)
 complete.remove <- unique(c(rownames(zero_infl_vars), "Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
                      "Poland_import", "France_export", "Netherlands_import", "Sweden_4_P_spread_to_DE", 
@@ -1302,7 +1312,7 @@ for (i in 1:dim(complete.stationarity)[1]) {
 }
 
 # Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
-complete.diff <- c("NG_TTF", "EUA_price","COAL_API2")
+complete.diff <- c("NG_TTF", "EUA_price", "COAL_API2")
 for (i in complete.diff){
   complete.xts[,i] <- diff(complete.xts[,i], 1)
   colnames(complete.xts)[colnames(complete.xts) == i] <- paste0(i, ".diff")
@@ -1427,6 +1437,8 @@ visNetwork(test.visn$nodes, test.visn$edges)
 
 # Dataset without zero-inflated variables ---------------------------------------------
 no_zeroinfl.xts <- complete.xts[ , -which(names(complete.xts) %in% rownames(zero_infl_vars))]
+# w/o the ones starting later:
+#no_zeroinfl.xts <- complete.xts[ , -which(rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1] %in% rownames(zero_infl_vars))]
 
 # Estimate number of lags needed
 no_zeroinfl.nlags <- VARselect(no_zeroinfl.xts, lag.max = 5, type = "const")
@@ -1474,6 +1486,7 @@ par(ask=F)
 
 # Standardize variables before DAG analysis
 no_zeroinfl.xts.std <- scale(no_zeroinfl.xts)
+#no_zeroinfl.xts.std <- no_zeroinfl.xts
 
 # Procedure p. 7
 # VECM 2 VAR:
@@ -1519,6 +1532,9 @@ no_zeroinfl.std.graph.B_0 <- graph_from_adjacency_matrix(
   weighted = TRUE
 )
 visIgraph(no_zeroinfl.std.graph.B_0)
+
+
+
 
 
 
