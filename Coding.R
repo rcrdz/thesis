@@ -660,19 +660,19 @@ for(i in 1:dim(complete.xts)[2]) {
 # DA_Price_DE, COAL_API2, EUA_price, NG_TTF
 
 # LOGIT-TRANSFORM variables with values in 0% - 100%: NG_storage
-#complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
+complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
 # Is it reasonable? 
 
 # LOG-TRANSFORM ALL STRICTLY POSITIVES
-#for (i in names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]){
-#  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i])
-#}
+for (i in names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]){
+  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i])
+}
 # LOG-TRANSFORM ALL variables WITH ZEROS AND NEGATIVE VAL'S
 # (Value + Maximum Negative value + 1)
-#for (i in names(complete.xts[,! names(complete.xts) %in% names(strictly_positives.xts)])){
-#  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
-#                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
-#}
+for (i in names(complete.xts[,! names(complete.xts) %in% names(strictly_positives.xts)])){
+  complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
+                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
+}
 
 # LOG-TRANSFORM ONLY the variables which have exponential trend
 #complete.xts$DA_Price_DE <- log(complete.xts[first_nonzero["DA_Price_DE",]:dim(complete.xts)[1], "DA_Price_DE"] + abs(min(data.xts[,"DA_Price_DE"][data.xts[,"DA_Price_DE"]<=0])) +1)
@@ -801,7 +801,7 @@ for (i in 1:dim(complete.stationarity)[1]) {
 }
 
 # Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
-complete.diff <- c("NG_TTF", "EUA_price","COAL_API2")
+complete.diff <- c("NG_TTF", "COAL_API2")
 for (i in complete.diff){
   complete.xts[,i] <- diff(complete.xts[,i], 1)
   colnames(complete.xts)[colnames(complete.xts) == i] <- paste0(i, ".diff")
@@ -828,7 +828,7 @@ complete.vecm <- cajorls(complete.coint, r = complete.rank)
 #summary(complete.vecm$rlm)
 
 # Normality test on residuals
-complete.var <- vec2var(complete.coint, r=complete.rank)
+complete.var <- vec2var(complete.coint, r = complete.rank)
 complete.normtest <- normality.test(complete.var, multivariate.only = FALSE)
 
 complete.pvals_res <- data.frame(matrix(ncol = 1, nrow = dim(complete.xts)[2]+1))
@@ -1066,6 +1066,27 @@ for (i in 1:dim(complete2.stationarity)[1]) {
   }
 }
 
+# Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
+complete2.diff <- c("Coal_CleanPrice", "NG_CleanPrice")
+for (i in complete2.diff){
+  complete2.xts[,i] <- diff(complete2.xts[,i], 1)
+  colnames(complete2.xts)[colnames(complete2.xts) == i] <- paste0(i, ".diff")
+}
+# EM algorithm / Kalman filter for the NA's?
+# But sample is not very small => Remove first row
+complete2.xts <- complete2.xts[-1,]
+
+# Estimate number of lags needed
+complete2.nlags <- VARselect(complete2.xts, lag.max = 15, type = "const")
+complete2.nlags$selection 
+complete2.nlags <- as.numeric(complete2.nlags$selection[1])
+# alternative: lags.select()
+
+# Estimate number of cointegrating vectors
+complete2.rank <- rank.test(VECM(complete2.xts, include = "const", estim = "ML", lag = complete2.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
+complete2.rank
+complete2.rank <- complete2.rank$r
+
 # Estimating VECM with cajorls() and specified rank from
 complete2.coint <- ca.jo(complete2.xts, type = "eigen", ecdet = "none", spec = "transitory", K = complete2.nlags, dumvar = NULL)
 complete2.vecm <- cajorls(complete2.coint, r = complete2.rank)
@@ -1176,7 +1197,6 @@ same_start.rank <- same_start.rank$r
 # https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
 # 1: VECM
 same_start.coint <- ca.jo(same_start.xts, type = "eigen", ecdet = "none", spec = "transitory", K = same_start.nlags, dumvar = NULL)
-# WHY IS K=2 NOT POSSIBLE??
 same_start.vecm <- cajorls(same_start.coint, r = same_start.rank)
 same_start.pi <- coefPI(same_start.vecm)
 same_start.alpha <- coefA(same_start.vecm)
@@ -1219,36 +1239,78 @@ visIgraph(same_start.graph.B_0)
 #saveWidget(visIgraph(same_start.graph.B_0), file = "Plots/causaleffects_B_0.html", title = "B_0")
 
 
-# Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
-complete2.diff <- c("Coal_CleanPrice", "NG_CleanPrice")
-for (i in complete2.diff){
-  complete2.xts[,i] <- diff(complete2.xts[,i], 1)
-  colnames(complete2.xts)[colnames(complete2.xts) == i] <- paste0(i, ".diff")
-}
-# EM algorithm / Kalman filter for the NA's?
-# But sample is not very small => Remove first row
-complete2.xts <- complete2.xts[-1,]
+
+
+# ----------------------------------------------------------------------------------------
+# Dataset w/o variables "starting later" and w/o zero-infl. ------------------------------
+# ----------------------------------------------------------------------------------------
+same_start_no_zi.xts <- complete.xts[, ! names(complete.xts) %in% rownames(first_nonzero)[first_nonzero$`First nonzero index` >2]]
+same_start_no_zi.xts <- complete.xts[, ! names(complete.xts) %in% names(zero_infl_vars.xts)]
+
+same_start_no_zi.xts <- scale(same_start_no_zi.xts)
 
 # Estimate number of lags needed
-complete2.nlags <- VARselect(complete2.xts, lag.max = 15, type = "const")
-complete2.nlags$selection 
-complete2.nlags <- as.numeric(complete2.nlags$selection[1])
-# alternative: lags.select()
+same_start_no_zi.nlags <- VARselect(same_start_no_zi.xts, lag.max = 15, type = "const")
+same_start_no_zi.nlags$selection 
+same_start_no_zi.nlags <- as.numeric(same_start_no_zi.nlags$selection[1])
 
 # Estimate number of cointegrating vectors
-complete2.rank <- rank.test(VECM(complete2.xts, include = "const", estim = "ML", lag = complete2.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
-complete2.rank
-complete2.rank <- complete2.rank$r
+same_start_no_zi.rank <- rank.test(VECM(same_start_no_zi.xts, include = "const", estim = "ML", lag = same_start_no_zi.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
+same_start_no_zi.rank
+same_start_no_zi.rank <- same_start_no_zi.rank$r
+
+# Procedure p. 7
+# VECM 2 VAR:
+# https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
+# 1: VECM
+same_start_no_zi.coint <- ca.jo(same_start_no_zi.xts, type = "eigen", ecdet = "none", spec = "transitory", K = same_start_no_zi.nlags, dumvar = NULL)
+same_start_no_zi.vecm <- cajorls(same_start_no_zi.coint, r = same_start_no_zi.rank)
+same_start_no_zi.pi <- coefPI(same_start_no_zi.vecm)
+same_start_no_zi.alpha <- coefA(same_start_no_zi.vecm)
+same_start_no_zi.beta <- coefB(same_start_no_zi.vecm)
+# How to get the gammas and mu? gammes has only 1 matrix (!)
+
+# 2: VAR
+same_start_no_zi.var <- vec2var(same_start_no_zi.coint, r=same_start_no_zi.rank)
+same_start_no_zi.M_list <- same_start_no_zi.var$A # M_list hast 2 matrices (since nlags=2)
+
+# 3: Residuals of VAR
+same_start_no_zi.res <- same_start_no_zi.var$resid
+
+# 4: LiNGAM
+same_start_no_zi.lingam <- lingam(same_start_no_zi.res)
+#as(same_start.lingam, "amat")
+same_start_no_zi.B_0 <- t(same_start_no_zi.lingam$Bpruned) # Bpruned is transpose of adj.matr.
+colnames(same_start_no_zi.B_0) <- names(same_start_no_zi.xts)
+rownames(same_start_no_zi.B_0) <- names(same_start_no_zi.xts)
+
+# 5: Matrices of lagged causal effects, B_tau
+same_start_no_zi.B_list <- list()
+for(i in 1:same_start_no_zi.nlags){
+  same_start_no_zi.B_list[[i]] <- (diag(dim(same_start_no_zi.xts)[2])-same_start_no_zi.B_0)%*%as.matrix(same_start_no_zi.M_list[[i]])
+}
+# use a cutoff in effect size as our signifcance threshold
+# Remove all effects from B_tau that are smaller in abs. value than 70% abs. value quantile of all elements in B_1
+same_start_no_zi.B.threshold <- quantile(abs(same_start_no_zi.B_list[[1]]), probs = 0.87)
+for(i in 1:length(same_start_no_zi.B_list)){
+  same_start_no_zi.B_list[[i]][which(abs(same_start_no_zi.B_list[[i]]) < same_start_no_zi.B.threshold)] <- 0
+}
+
+
+# Graphical representation of B_0
+same_start_no_zi.graph.B_0 <- graph_from_adjacency_matrix(
+  same_start_no_zi.B_0,
+  weighted = TRUE
+)
+visIgraph(same_start_no_zi.graph.B_0)
 
 
 
 
 
-
-
-
-
+# -------------------------------------------------------------------
 # Stationary-only subset --------------------------------------------
+# -------------------------------------------------------------------
 # We can directly use VAR-Model
 # Where do all tests agree in stationarity?
 # ADF == PP == KPSS == stat
@@ -1450,8 +1512,9 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
-
+# ---------------------------------------------------------------------------
 # Variables which are stationary after one diff -----------------------------
+# ---------------------------------------------------------------------------
 subset_2.xts <- data.xts[, c("DA_Price_DE", "forecast_residual_load", "Temperature", "GHI", "solar_production")]
 names(subset_2.xts)
 plot(subset_2.xts)
@@ -1766,8 +1829,9 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
-
+# -------------------------------------------------------------------------------------
 # Dataset without zero-inflated variables ---------------------------------------------
+# -------------------------------------------------------------------------------------
 no_zeroinfl.xts <- complete.xts[ , -which(names(complete.xts) %in% names(zero_infl_vars.xts))]
 # w/o the ones starting later:
 #no_zeroinfl.xts <- complete.xts[ , -which(rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1] %in% names(zero_infl_vars.xts))]
@@ -1909,6 +1973,16 @@ testset.var2 <- VAR(testset.xts, p = 2, type = "const")
 Bcoef(testset.var2)
 
 
+fitsvar <- xts(fitted(testset.var2), order.by=index(data.xts)[2:2480])
+plot(fitsvar)
 
+resids <- xts(residuals(testset.var), order.by=index(data.xts)[2:2480])
+plot(resids)
+  
+###
+x <- xts(fitted(complete.std.var), order.by = index(data.xts)[2:2479])
+plot(complete.xts.std[,1])
+lines(x[,1], col = "red")
+  
 
-
+  
