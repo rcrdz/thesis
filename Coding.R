@@ -259,9 +259,9 @@ print(high_cor_with_lags[1:5,])
 #unique(as.vector(as.matrix(high_cor_with_lags[,1:2])))
 
 
-# ---------------
-# Normality tests
-# ---------------
+# -----------------
+# Gaussianity tests
+# -----------------
 
 # (I) Shapiro-Wilk-Test
 # H_0: Variable is normally distributed
@@ -299,9 +299,9 @@ for (i in 1:dim(pvals_shapiro_log)[1]) {
 row.names(pvals_shapiro_log)[which(pvals_shapiro_log[,1]>0.05)]
 
 
-# ------------------
-# Standardizing data
-# ------------------
+# ----------------------------
+# Standardizing data (example)
+# ----------------------------
 
 # Histogram of non-standardized data
 # Example: Poland_export (b/c highest p-value)
@@ -314,6 +314,14 @@ Poland_export.std <- scale(data.xts[,rownames(pvals_normality)[which.max(pvals_n
 hist(Poland_export.std, xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
 qqnorm(Poland_export.std, main=colnames(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]]))
 qqline(rnorm(dim(data.xts)[1]), col = "red")
+
+
+#####################################
+### Log and Logit-transformations ###
+#####################################
+
+# Applying it globally 
+# But: Transformations to all or only specific ones?
 
 
 ###################
@@ -714,7 +722,7 @@ for(i in 1:dim(complete.xts)[2]) {
 }
 
 # Detecting exponentially growing trend
-# if no exponentially growing trend => No need for log
+# if no exponentially growing trend => No need for log (?)
 # Which ones seem to have exponential trend?
 # DA_Price_DE, COAL_API2, EUA_price, NG_TTF
 
@@ -723,12 +731,13 @@ complete.xts$NG_storage <- logit(complete.xts$NG_storage/100)
 # Is it reasonable? 
 
 # LOG-TRANSFORM ALL STRICTLY POSITIVES
-for (i in names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]){
+pos <- names(complete.xts)[names(complete.xts) %in% names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]]
+for (i in pos){
   complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i])
 }
 # LOG-TRANSFORM ALL variables WITH ZEROS AND NEGATIVE VAL'S
 # (Value + Maximum Negative value + 1)
-for (i in names(complete.xts[,! names(complete.xts) %in% names(strictly_positives.xts)])){
+for (i in names(complete.xts)[!names(complete.xts) %in% c(pos,"NG_storage")]){
   complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] <- log(complete.xts[first_nonzero[i,]:dim(complete.xts)[1], i] +
                                                                    abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
 }
@@ -747,7 +756,7 @@ complete.lms <- lapply(1:dim(complete.xts)[2], function(x) lm(complete.xts[first
 complete.fitted <- sapply(complete.lms, fitted)
 for(i in 1:dim(complete.xts)[2]){
   if (length(complete.fitted[[i]]) < dim(complete.xts)[1]){
-    complete.fitted[[i]] <- c(rep(0, first_nonzero[i,1]-1), complete.fitted[[i]])
+    complete.fitted[[i]] <- c(rep(0, first_nonzero[names(complete.xts)[i],1]-1), complete.fitted[[i]])
   }
 }
 complete.fitted <- data.frame(complete.fitted)
@@ -954,7 +963,6 @@ for(i in 1:length(complete.std.B_list)){
   complete.std.B_list[[i]][which(abs(complete.std.B_list[[i]]) < complete.std.B.threshold)] <- 0
 }
 
-
 # Graphical representation of B_0
 complete.std.graph.B_0 <- graph_from_adjacency_matrix(
   complete.std.B_0,
@@ -969,6 +977,7 @@ lapply(1:complete.nlags, function(x) visIgraph(complete.std.graph.B_lagged[[x]])
 #lapply(1:complete.nlags, function(x) saveWidget(visIgraph(complete.std.graph.B_lagged[[x]]), file = paste0("Plots/causaleffects_B_",x,".html"), title = paste0("B_", x)))
 
 
+
 # Alternative ways for graphical representation:
 ## convert to VisNetwork-list
 test.visn <- toVisNetworkData(complete.std.graph.B_0)
@@ -979,42 +988,38 @@ visNetwork(test.visn$nodes, test.visn$edges)
 # tkplot()
 
 
-
 # ----------------------
 # 2nd "complete" dataset
 # ----------------------
-# COAL AND NG: CLEAN PRICES 
-complete2.xts <- data_raw.xts[,! names(data_raw.xts) %in% c("DayofWeek", "Is_Weekday", "Seasons", "Holiday", "Year")]
-complete2.xts <- complete2.xts[,! names(complete2.xts) %in% names(complete2.xts[,grep("shareOf", names(complete2.xts))])]
-# Remove 'EUA_price', 'COAL_API2' and 'NG_TTF'
-complete2.xts <- complete2.xts[,! names(complete2.xts) %in% c("EUA_price", "COAL_API2", "NG_TTF")]
-# Remove 'renewables_forecast_error': 'renewables_forecast_error' = sum('biomass_production',...)-sum('gen_forecast_solar',...)
-complete2.xts <- complete2.xts[,! names(complete2.xts) %in% names(complete2.xts[,grep("renewables_forecast_error", names(complete2.xts))])]
-# Remove 'Total_production' b/c of redundancy
-complete2.xts <- complete2.xts[,! names(complete2.xts) %in% names(complete2.xts[,grep("Total_production", names(complete2.xts))])]
-# Important variables: 'forecast_residual_load', 'COAL_API2', 'NG_TTF', 'EUA_price'
 
-# DATASET CHANGED: 
-# List: When is first nonzero entry 
-# REVISE CODE !
-complete2.first_nonzero <- data.frame(matrix(ncol = 1, nrow = dim(complete2.xts)[2]))
-colnames(complete2.first_nonzero) <- "First nonzero index"
-rownames(complete2.first_nonzero) <- colnames(complete2.xts)
-for (i in 1:dim(complete2.first_nonzero)[1]) {
-  boolean <- complete2.xts[,i] != 0
-  complete2.first_nonzero[i,1] <- min(which(boolean == TRUE))
+# COAL AND NG: CLEAN PRICES 
+complete2.xts <- data.xts[,! names(data.xts) %in% c("EUA_price", "COAL_API2", "NG_TTF")]
+
+# LOGIT-TRANSFORM variables with values in 0% - 100%: NG_storage
+complete2.xts$NG_storage <- logit(complete2.xts$NG_storage/100)
+# Is it reasonable? 
+
+# LOG-TRANSFORM ALL STRICTLY POSITIVES
+pos2 <- names(complete2.xts)[names(complete2.xts) %in% names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]]
+for (i in pos2){
+  complete2.xts[first_nonzero[i,]:dim(complete2.xts)[1], i] <- log(complete2.xts[first_nonzero[i,]:dim(complete2.xts)[1], i])
+}
+# LOG-TRANSFORM ALL variables WITH ZEROS AND NEGATIVE VAL'S
+# (Value + Maximum Negative value + 1)
+for (i in names(complete2.xts)[!names(complete2.xts) %in% c(pos2,"NG_storage")]){
+  complete2.xts[first_nonzero[i,]:dim(complete2.xts)[1], i] <- log(complete2.xts[first_nonzero[i,]:dim(complete2.xts)[1], i] +
+                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
 }
 
-
 # Estimating seasonality components 
-complete2.lms <- lapply(1:dim(complete2.xts)[2], function(x) lm(complete2.xts[complete2.first_nonzero[names(complete2.xts)[x],1]:dim(complete2.xts)[1], x] ~ sin(2*pi*seq(from = 1, to = dim(complete2.xts)[1]-complete2.first_nonzero[names(complete2.xts)[x], 1]+1, by = 1)/365.25) 
-                                                              + cos(2*pi*seq(from = 1, to = dim(complete2.xts)[1]-complete2.first_nonzero[names(complete2.xts)[x],1]+1, by = 1)/365.25) 
-                                                              + sin(2*pi*2*seq(from = 1, to = dim(complete2.xts)[1]-complete2.first_nonzero[names(complete2.xts)[x],1]+1, by = 1)/365.25) 
-                                                              + cos(2*pi*2*seq(from = 1, to = dim(complete2.xts)[1]-complete2.first_nonzero[names(complete2.xts)[x],1]+1, by = 1)/365.25)))
+complete2.lms <- lapply(1:dim(complete2.xts)[2], function(x) lm(complete2.xts[first_nonzero[names(complete2.xts)[x],1]:dim(complete2.xts)[1], x] ~ sin(2*pi*seq(from = 1, to = dim(complete2.xts)[1]-first_nonzero[names(complete2.xts)[x], 1]+1, by = 1)/365.25) 
+                                                              + cos(2*pi*seq(from = 1, to = dim(complete2.xts)[1]-first_nonzero[names(complete2.xts)[x],1]+1, by = 1)/365.25) 
+                                                              + sin(2*pi*2*seq(from = 1, to = dim(complete2.xts)[1]-first_nonzero[names(complete2.xts)[x],1]+1, by = 1)/365.25) 
+                                                              + cos(2*pi*2*seq(from = 1, to = dim(complete2.xts)[1]-first_nonzero[names(complete2.xts)[x],1]+1, by = 1)/365.25)))
 complete2.fitted <- sapply(complete2.lms, fitted)
 for(i in 1:dim(complete2.xts)[2]){
   if (length(complete2.fitted[[i]]) < dim(complete2.xts)[1]){
-    complete2.fitted[[i]] <- c(rep(0, complete2.first_nonzero[i,1]-1), complete2.fitted[[i]])
+    complete2.fitted[[i]] <- c(rep(0, first_nonzero[names(complete2.xts)[i],,1]-1), complete2.fitted[[i]])
   }
 }
 complete2.fitted <- data.frame(complete2.fitted)
@@ -1031,7 +1036,6 @@ for(i in 1:dim(complete2.xts)[2]) {
     theme(axis.text.x=element_text(angle=60, hjust=1))
   print(abc)
 }
-
 
 # Variables which seem NOT to have seasonality:
 complete2.remove <- unique(c(names(zero_infl_vars.xts), "Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
@@ -1226,6 +1230,247 @@ visIgraph(complete2.std.graph.B_0)
 #saveWidget(visIgraph(complete2.std.graph.B_0), file = "Plots/causaleffects_B_0.html", title = "B_0")
 
 
+# ----------------------
+# 3rd "complete" dataset
+# ----------------------
+
+# COAL AND NG: CLEAN PRICES AND EUA_price AND COAL_API2 AND NG_TTF
+complete3.xts <- data.xts
+
+# LOGIT-TRANSFORM variables with values in 0% - 100%: NG_storage
+complete3.xts$NG_storage <- logit(complete3.xts$NG_storage/100)
+# Is it reasonable? 
+
+# LOG-TRANSFORM ALL STRICTLY POSITIVES
+pos3 <- names(complete3.xts)[names(complete3.xts) %in% names(strictly_positives.xts)[!names(strictly_positives.xts) %in% c("NG_storage")]]
+for (i in pos3){
+  complete3.xts[first_nonzero[i,]:dim(complete3.xts)[1], i] <- log(complete3.xts[first_nonzero[i,]:dim(complete3.xts)[1], i])
+}
+# LOG-TRANSFORM ALL variables WITH ZEROS AND NEGATIVE VAL'S
+# (Value + Maximum Negative value + 1)
+for (i in names(complete3.xts)[!names(complete3.xts) %in% c(pos3,"NG_storage")]){
+  complete3.xts[first_nonzero[i,]:dim(complete3.xts)[1], i] <- log(complete3.xts[first_nonzero[i,]:dim(complete3.xts)[1], i] +
+                                                                   abs(min(data.xts[,i][data.xts[,i]<=0])) +1)
+}
+
+# Estimating seasonality components 
+complete3.lms <- lapply(1:dim(complete3.xts)[2], function(x) lm(complete3.xts[first_nonzero[names(complete3.xts)[x],1]:dim(complete3.xts)[1], x] ~ sin(2*pi*seq(from = 1, to = dim(complete3.xts)[1]-first_nonzero[names(complete3.xts)[x], 1]+1, by = 1)/365.25) 
+                                                                + cos(2*pi*seq(from = 1, to = dim(complete3.xts)[1]-first_nonzero[names(complete3.xts)[x],1]+1, by = 1)/365.25) 
+                                                                + sin(2*pi*2*seq(from = 1, to = dim(complete3.xts)[1]-first_nonzero[names(complete3.xts)[x],1]+1, by = 1)/365.25) 
+                                                                + cos(2*pi*2*seq(from = 1, to = dim(complete3.xts)[1]-first_nonzero[names(complete3.xts)[x],1]+1, by = 1)/365.25)))
+complete3.fitted <- sapply(complete3.lms, fitted)
+for(i in 1:dim(complete3.xts)[2]){
+  if (length(complete3.fitted[[i]]) < dim(complete3.xts)[1]){
+    complete3.fitted[[i]] <- c(rep(0, first_nonzero[names(complete3.xts)[i],,1]-1), complete3.fitted[[i]])
+  }
+}
+complete3.fitted <- data.frame(complete3.fitted)
+colnames(complete3.fitted) <- colnames(complete3.xts)
+complete3.fitted <- xts(complete3.fitted, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+
+# Checking seasonality
+for(i in 1:dim(complete3.xts)[2]) {  
+  abc <- ggplot() + 
+    geom_line(data = complete3.xts, aes(x = time(complete3.xts), y = as.numeric(complete3.xts[,i])), color = "black") +
+    geom_line(data = complete3.fitted, aes(x = time(complete3.xts), y = as.numeric(complete3.fitted[,i])), color = "red") +
+    xlab('Date') +
+    ylab(colnames(complete3.xts)[i]) +
+    theme(axis.text.x=element_text(angle=60, hjust=1))
+  print(abc)
+}
+
+
+# Variables which seem NOT to have seasonality:
+complete3.remove <- unique(c(names(zero_infl_vars.xts), "Belgium_import", "Belgium_export", "Norway_import", "Norway_export",
+                             "Poland_import", "France_export", "Netherlands_import", "Sweden_4_P_spread_to_DE", 
+                             "COAL_CleanPrice", "NG_CleanPrice", "DA_Price_DE", "COAL_API2", "EUA_price", "NG_TTF"))
+for (i in names(complete3.xts[, ! names(complete3.xts) %in% complete3.remove])){
+  complete3.xts[,i] <- complete3.xts[,i] - complete3.fitted[,i]
+}
+
+# Plots after deseasonalization
+for(i in 1:dim(complete3.xts)[2]) {  
+  abc <- ggplot() + 
+    geom_line(data = complete3.xts, aes(x = time(data.xts), y = as.numeric(complete3.xts[,i])), color = "black") +
+    xlab('Date') +
+    ylab(colnames(complete3.xts)[i]) +
+    theme(axis.text.x=element_text(angle=60, hjust=1))
+  print(abc)
+}
+
+# Kick out Luxembourg_import: Only 4 values
+complete3.xts <- subset(complete3.xts, select=-Luxembourg_import)
+
+# p-values for tests (+differences)
+complete3.pvals_tests <- data.frame(matrix(ncol = 7, nrow = length(colnames(complete3.xts))))
+colnames(complete3.pvals_tests) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
+rownames(complete3.pvals_tests) <- colnames(complete3.xts)
+for (i in 1:dim(complete3.pvals_tests)[1]) {
+  adf <- adf.test(complete3.xts[,i])
+  complete3.pvals_tests[i,1] <- adf$p.value
+  # removing first value to get no NA's
+  adf1 <- adf.test(diff(complete3.xts[,i], differences = 1)[-1])
+  complete3.pvals_tests[i,2] <- adf1$p.value
+  
+  pp <- pp.test(complete3.xts[,i])
+  complete3.pvals_tests[i,3] <- pp$p.value
+  # removing first value to get no NA's
+  pp1 <- pp.test(diff(complete3.xts[,i], differences = 1)[-1])
+  complete3.pvals_tests[i,4] <- pp1$p.value
+  
+  kpss <- kpss.test(complete3.xts[,i])
+  complete3.pvals_tests[i,5] <- kpss$p.value
+  # removing first value to get no NA's
+  kpss2 <- kpss.test(diff(complete3.xts[,i], differences = 1)[-1])
+  complete3.pvals_tests[i,6] <- kpss2$p.value
+  # removing also second value to get no NA's
+  kpss3 <- kpss.test(diff(complete3.xts[,i], differences = 2)[-c(1, 2)])
+  complete3.pvals_tests[i,7] <- kpss3$p.value
+}
+
+complete3.sign.lvl_adf <- 0.05
+complete3.sign.lvl_pp <- 0.05
+complete3.sign.lvl_kpss <- 0.05
+complete3.stationarity <- data.frame(matrix(ncol = 7, nrow = length(colnames(complete3.xts))))
+colnames(complete3.stationarity) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
+rownames(complete3.stationarity) <- colnames(complete3.xts)
+for (i in 1:dim(complete3.stationarity)[1]) {
+  if(complete3.pvals_tests[i,1] < complete3.sign.lvl_adf){
+    complete3.stationarity[i,1] <- "stat"
+  } else {
+    complete3.stationarity[i,1] <- "non-stat"
+  }
+  if(complete3.pvals_tests[i,2] < complete3.sign.lvl_adf){
+    complete3.stationarity[i,2] <- "stat"
+  } else {
+    complete3.stationarity[i,2] <- "non-stat"
+  }
+  if(complete3.pvals_tests[i,3] < complete3.sign.lvl_pp){
+    complete3.stationarity[i,3] <- "stat"
+  } else {
+    complete3.stationarity[i,3] <- "non-stat"
+  }
+  if(complete3.pvals_tests[i,4] < complete3.sign.lvl_pp){
+    complete3.stationarity[i,4] <- "stat"
+  } else {
+    complete3.stationarity[i,4] <- "non-stat"
+  }
+  if(complete3.pvals_tests[i,5] < complete3.sign.lvl_kpss){
+    complete3.stationarity[i,5] <- "non-stat"
+  } else {
+    complete3.stationarity[i,5] <- "stat"
+  }
+  if(complete3.pvals_tests[i,6] < complete3.sign.lvl_kpss){
+    complete3.stationarity[i,6] <- "non-stat"
+  } else {
+    complete3.stationarity[i,6] <- "stat"
+  }
+  if(complete3.pvals_tests[i,7] < complete3.sign.lvl_kpss){
+    complete3.stationarity[i,7] <- "non-stat"
+  } else {
+    complete3.stationarity[i,7] <- "stat"
+  }
+}
+
+# Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
+complete3.diff <- c("Coal_CleanPrice", "NG_CleanPrice", "COAL_API2", "NG_TTF")
+for (i in complete3.diff){
+  complete3.xts[,i] <- diff(complete3.xts[,i], 1)
+  colnames(complete3.xts)[colnames(complete3.xts) == i] <- paste0(i, ".diff")
+}
+# EM algorithm / Kalman filter for the NA's?
+# But sample is not very small => Remove first row
+complete3.xts <- complete3.xts[-1,]
+
+# Estimate number of lags needed
+complete3.nlags <- VARselect(complete3.xts, lag.max = 15, type = "const")
+complete3.nlags$selection 
+complete3.nlags <- as.numeric(complete3.nlags$selection[1])
+# alternative: lags.select()
+
+# Estimate number of cointegrating vectors
+complete3.rank <- rank.test(VECM(complete3.xts, include = "const", estim = "ML", lag = complete3.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
+complete3.rank
+complete3.rank <- complete3.rank$r
+
+# Estimating VECM with cajorls() and specified rank from
+complete3.coint <- ca.jo(complete3.xts, type = "eigen", ecdet = "none", spec = "transitory", K = complete3.nlags, dumvar = NULL)
+complete3.vecm <- cajorls(complete3.coint, r = complete3.rank)
+#summary(complete3.vecm$rlm)
+
+# Normality test on residuals
+complete3.var <- vec2var(complete3.coint, r=complete3.rank)
+complete3.normtest <- normality.test(complete3.var, multivariate.only = FALSE)
+
+complete3.pvals_res <- data.frame(matrix(ncol = 1, nrow = dim(complete3.xts)[2]+1))
+colnames(complete3.pvals_res) <- "p-value"
+rownames(complete3.pvals_res) <- c(colnames(complete3.xts),"Multivariate")
+for (i in 1:dim(complete3.xts)[2]){
+  complete3.pvals_res[i,1] <- as.numeric(complete3.normtest$jb.uni[[paste0("resids of ", names(complete3.xts)[i])]]$p.value)
+}
+complete3.pvals_res[dim(complete3.xts)[2]+1,1] <- as.numeric(complete3.normtest$jb.mul$JB$p.value)
+
+# Autocorrelation between residuals?
+for (i in 1:dim(complete3.normtest$resid)[2]) {
+  acf2(complete3.normtest$resid[,i], main = paste("ACF and PACF of residuals of", colnames(complete3.xts)[i]))
+}
+# showes no significant auto-correlation between the residuals
+# => assumption of independent and non-Gaussian residuals is not unreasonable
+# => LiNGAM can be used
+
+# TESTS [!]
+# https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
+
+
+# Standardize variables before DAG analysis
+complete3.xts.std <- scale(complete3.xts)
+
+# Procedure p. 7
+# VECM 2 VAR:
+# https://www.r-bloggers.com/2021/12/some-interesting-issues-in-vecm-using-r/
+# 1: VECM
+complete3.std.coint <- ca.jo(complete3.xts.std, type = "eigen", ecdet = "none", spec = "transitory", K = 4, dumvar = NULL)
+# WHY IS K=2 NOT POSSIBLE FOR STANDARDIZED DATA?
+complete3.std.vecm <- cajorls(complete3.std.coint, r = complete3.rank)
+complete3.std.pi <- coefPI(complete3.std.vecm)
+complete3.std.alpha <- coefA(complete3.std.vecm)
+complete3.std.beta <- coefB(complete3.std.vecm)
+# How to get the gammas and mu? gammes has only 1 matrix (!)
+
+# 2: VAR
+complete3.std.var <- vec2var(complete3.std.coint, r=complete3.rank)
+complete3.std.M_list <- complete3.std.var$A # M_list hast 2 matrices (since nlags=2)
+
+# 3: Residuals of VAR
+complete3.std.var.res <- complete3.std.var$resid
+
+# 4: LiNGAM
+complete3.std.lingam <- lingam(complete3.std.var.res)
+#as(complete.std.lingam, "amat")
+complete3.std.B_0 <- t(complete3.std.lingam$Bpruned) # Bpruned is transpose of adj.matr.
+colnames(complete3.std.B_0) <- names(complete3.xts.std)
+rownames(complete3.std.B_0) <- names(complete3.xts.std)
+
+# 5: Matrices of lagged causal effects, B_tau
+complete3.std.B_list <- list()
+for(i in 1:complete3.nlags){
+  complete3.std.B_list[[i]] <- (diag(dim(complete3.xts.std)[2])-complete3.std.B_0)%*%as.matrix(complete3.std.M_list[[i]])
+}
+# use a cutoff in effect size as our signifcance threshold
+# Remove all effects from B_tau that are smaller in abs. value than 70% abs. value quantile of all elements in B_1
+complete3.std.B.threshold <- quantile(abs(complete3.std.B_list[[1]]), probs = 0.87)
+for(i in 1:length(complete3.std.B_list)){
+  complete3.std.B_list[[i]][which(abs(complete3.std.B_list[[i]]) < complete3.std.B.threshold)] <- 0
+}
+
+
+# Graphical representation of B_0
+complete3.std.graph.B_0 <- graph_from_adjacency_matrix(
+  complete3.std.B_0,
+  weighted = TRUE
+)
+visIgraph(complete3.std.graph.B_0)
+#saveWidget(visIgraph(complete3.std.graph.B_0), file = "Plots/causaleffects_B_0.html", title = "B_0")
 
 
 
@@ -1234,9 +1479,10 @@ visIgraph(complete2.std.graph.B_0)
 
 
 
-# -------------------------------------
-# Dataset w/o variables "starting later
-# -------------------------------------
+
+# --------------------------------------
+# Dataset w/o variables "starting later"
+# --------------------------------------
 same_start.xts <- complete.xts[, ! names(complete.xts) %in% rownames(first_nonzero)[first_nonzero$`First nonzero index` >2]]
 same_start.xts <- scale(same_start.xts)
 
@@ -1300,9 +1546,9 @@ visIgraph(same_start.graph.B_0)
 
 
 
-# --------------------------------------------------------- #
-# Dataset w/o variables "starting later" and w/o zero-infl. #
-# --------------------------------------------------------- #
+# ---------------------------------------------------------
+# Dataset w/o variables "starting later" and w/o zero-infl.
+# ---------------------------------------------------------
 same_start_no_zi.xts <- complete.xts[, ! names(complete.xts) %in% rownames(first_nonzero)[first_nonzero$`First nonzero index` >2]]
 same_start_no_zi.xts <- complete.xts[, ! names(complete.xts) %in% names(zero_infl_vars.xts)]
 
@@ -1367,9 +1613,9 @@ visIgraph(same_start_no_zi.graph.B_0)
 
 
 
-# ---------------------- #
-# Stationary-only subset #
-# ---------------------- #
+# ----------------------
+# Stationary-only subset
+# ----------------------
 # We can directly use VAR-Model
 # Where do all tests agree in stationarity?
 # ADF == PP == KPSS == stat
@@ -1571,9 +1817,9 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
-# --------------------------------------------- #
-# Variables which are stationary after one diff #
-# --------------------------------------------- #
+# ---------------------------------------------
+# Variables which are stationary after one diff
+# ---------------------------------------------
 subset_2.xts <- data.xts[, c("DA_Price_DE", "forecast_residual_load", "Temperature", "GHI", "solar_production")]
 names(subset_2.xts)
 plot(subset_2.xts)
@@ -1888,9 +2134,9 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
-# --------------------------------------- #
-# Dataset without zero-inflated variables #
-# --------------------------------------- #
+# ---------------------------------------
+# Dataset without zero-inflated variables
+# ---------------------------------------
 no_zeroinfl.xts <- complete.xts[ , -which(names(complete.xts) %in% names(zero_infl_vars.xts))]
 # w/o the ones starting later:
 #no_zeroinfl.xts <- complete.xts[ , -which(rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1] %in% names(zero_infl_vars.xts))]
@@ -2013,9 +2259,10 @@ dev.off()
 
 
 
-# ---------------------------- #
-# Playing around with testsets #
-# ---------------------------- #
+# ---------------------------
+# Playing around with subsets
+# ---------------------------
+
 #testset.xts <- data.xts[,c("NG_TTF", "COAL_API2", "Temperature", "DewPoint", "Humidity",
 #                           "Wind_Speed", "GHI", "wind_offshore_production", "wind_onshore_production",
 #                           "solar_production", "gas_production")]
@@ -2192,24 +2439,12 @@ testset.graph.B_0 <- graph_from_adjacency_matrix(
 visIgraph(testset.graph.B_0)
 
 
-  
-#############
+# ----------------------------------  
+# Plotting fitted vals and residuals
+# ----------------------------------
+
 x <- xts(fitted(complete.std.var), order.by = index(data.xts)[2:2479])
 y <- xts(complete.std.var$resid, order.by = index(data.xts)[2:2479])
 plot(complete.xts.std[,41])
 lines(x[,41], col = "red")
 lines(y[,41], col = "blue")
-
-
-#######################
-
-
-
-
-
-
-
-
-  
-
-  
