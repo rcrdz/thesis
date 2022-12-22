@@ -638,9 +638,9 @@ library(NlinTS)
 # When VAR when VECM
 # https://www.researchgate.net/post/Is-it-necessary-for-variables-to-be-integrated-of-order-1-to-applying-VAR-model-or-I-can-use-it-if-variables-are-integrated-of-any-order
 
-# --------------------------------------------------------------
-# Complete dataset ---------------------------------------------
-# --------------------------------------------------------------
+# ---------------- #
+# Complete dataset #
+# ---------------- #
 # COAL AND NG: EUA_price AND NG_TTF/COAL_API2
 complete.xts <- data.xts
 
@@ -921,9 +921,9 @@ visNetwork(test.visn$nodes, test.visn$edges)
 
 
 
-# ------------------------------------------------------------------
-# 2nd Complete dataset ---------------------------------------------
-# ------------------------------------------------------------------
+# -------------------- #
+# 2nd Complete dataset #
+# -------------------- #
 # COAL AND NG: CLEAN PRICES 
 complete2.xts <- data_raw.xts[,! names(data_raw.xts) %in% c("DayofWeek", "Is_Weekday", "Seasons", "Holiday", "Year")]
 complete2.xts <- complete2.xts[,! names(complete2.xts) %in% names(complete2.xts[,grep("shareOf", names(complete2.xts))])]
@@ -1175,9 +1175,9 @@ visIgraph(complete2.std.graph.B_0)
 
 
 
-# ----------------------------------------------------------------------------------------
-# Dataset without variables "starting later" ---------------------------------------------
-# ----------------------------------------------------------------------------------------
+# ----------------------------------------- #
+# Dataset without variables "starting later #
+# ----------------------------------------- #
 same_start.xts <- complete.xts[, ! names(complete.xts) %in% rownames(first_nonzero)[first_nonzero$`First nonzero index` >2]]
 same_start.xts <- scale(same_start.xts)
 
@@ -1241,9 +1241,9 @@ visIgraph(same_start.graph.B_0)
 
 
 
-# ----------------------------------------------------------------------------------------
-# Dataset w/o variables "starting later" and w/o zero-infl. ------------------------------
-# ----------------------------------------------------------------------------------------
+# --------------------------------------------------------- #
+# Dataset w/o variables "starting later" and w/o zero-infl. #
+# --------------------------------------------------------- #
 same_start_no_zi.xts <- complete.xts[, ! names(complete.xts) %in% rownames(first_nonzero)[first_nonzero$`First nonzero index` >2]]
 same_start_no_zi.xts <- complete.xts[, ! names(complete.xts) %in% names(zero_infl_vars.xts)]
 
@@ -1308,9 +1308,9 @@ visIgraph(same_start_no_zi.graph.B_0)
 
 
 
-# -------------------------------------------------------------------
-# Stationary-only subset --------------------------------------------
-# -------------------------------------------------------------------
+# ---------------------- #
+# Stationary-only subset #
+# ---------------------- #
 # We can directly use VAR-Model
 # Where do all tests agree in stationarity?
 # ADF == PP == KPSS == stat
@@ -1512,9 +1512,9 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
-# ---------------------------------------------------------------------------
-# Variables which are stationary after one diff -----------------------------
-# ---------------------------------------------------------------------------
+# --------------------------------------------- #
+# Variables which are stationary after one diff #
+# --------------------------------------------- #
 subset_2.xts <- data.xts[, c("DA_Price_DE", "forecast_residual_load", "Temperature", "GHI", "solar_production")]
 names(subset_2.xts)
 plot(subset_2.xts)
@@ -1829,9 +1829,9 @@ lapply(1:subset_1.lags, function(x) plot.igraph(subset_1.lagged_graphs[[x]], lay
 
 
 
-# -------------------------------------------------------------------------------------
-# Dataset without zero-inflated variables ---------------------------------------------
-# -------------------------------------------------------------------------------------
+# --------------------------------------- #
+# Dataset without zero-inflated variables #
+# --------------------------------------- #
 no_zeroinfl.xts <- complete.xts[ , -which(names(complete.xts) %in% names(zero_infl_vars.xts))]
 # w/o the ones starting later:
 #no_zeroinfl.xts <- complete.xts[ , -which(rownames(first_nonzero)[first_nonzero$`First nonzero index` != 1] %in% names(zero_infl_vars.xts))]
@@ -1954,24 +1954,156 @@ dev.off()
 
 
 
+# ---------------------------- #
+# Playing around with testsets #
+# ---------------------------- #
+#testset.xts <- data.xts[,c("NG_TTF", "COAL_API2", "Temperature", "DewPoint", "Humidity",
+#                           "Wind_Speed", "GHI", "wind_offshore_production", "wind_onshore_production",
+#                           "solar_production", "gas_production")]
+testset.xts <- strictly_positives.xts
 
-# Playing around with VEC to VAR transformation
-testset.xts <- data.xts[,c("NG_TTF", "COAL_API2", "Temperature", "DewPoint", "Humidity",
-                           "Wind_Speed", "GHI", "wind_offshore_production", "wind_onshore_production",
-                           "solar_production", "gas_production")]
-testset.xts <- scale(testset.xts)
+# LOGIT-TRANSFORM 
+testset.xts$NG_storage <- logit(testset.xts$NG_storage/100)
+
+# LOG-TRANSFORM
+for (i in names(testset.xts)[!names(testset.xts) %in% c("NG_storage")]){
+  testset.xts[first_nonzero[i,]:dim(testset.xts)[1], i] <- log(testset.xts[first_nonzero[i,]:dim(testset.xts)[1], i])
+}
+
+
+# Estimating seasonality components 
+testset.lms <- lapply(1:dim(testset.xts)[2], function(x) lm(testset.xts[first_nonzero[names(testset.xts)[x],1]:dim(testset.xts)[1], x] ~ sin(2*pi*seq(from = 1, to = dim(testset.xts)[1]-first_nonzero[names(testset.xts)[x], 1]+1, by = 1)/365.25) 
+                                                              + cos(2*pi*seq(from = 1, to = dim(testset.xts)[1]-first_nonzero[names(testset.xts)[x],1]+1, by = 1)/365.25) 
+                                                              + sin(2*pi*2*seq(from = 1, to = dim(testset.xts)[1]-first_nonzero[names(testset.xts)[x],1]+1, by = 1)/365.25) 
+                                                              + cos(2*pi*2*seq(from = 1, to = dim(testset.xts)[1]-first_nonzero[names(testset.xts)[x],1]+1, by = 1)/365.25)))
+testset.fitted <- sapply(testset.lms, fitted)
+for(i in 1:dim(testset.xts)[2]){
+  if (length(testset.fitted[[i]]) < dim(testset.xts)[1]){
+    testset.fitted[[i]] <- c(rep(0, first_nonzero[names(testset.xts)[i],1]-1), testset.fitted[[i]])
+  }
+}
+testset.fitted <- data.frame(testset.fitted)
+colnames(testset.fitted) <- colnames(testset.xts)
+testset.fitted <- xts(testset.fitted, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+
+# Checking seasonality
+for(i in 1:dim(testset.xts)[2]) {  
+  abc <- ggplot() + 
+    geom_line(data = testset.xts, aes(x = time(testset.xts), y = as.numeric(testset.xts[,i])), color = "black") +
+    geom_line(data = testset.fitted, aes(x = time(testset.xts), y = as.numeric(testset.fitted[,i])), color = "red") +
+    xlab('Date') +
+    ylab(colnames(testset.xts)[i]) +
+    theme(axis.text.x=element_text(angle=60, hjust=1))
+  print(abc)
+}
+
+# Kick out Luxembourg_export, starts later:
+testset.xts <- subset(testset.xts, select=-Luxembourg_export)
+
+# Variables which seem NOT to have seasonality:
+testset.remove <- unique(c(names(zero_infl_vars.xts), "COAL_API2", "EUA_price", "NG_TTF"))
+for (i in names(testset.xts[, ! names(testset.xts) %in% testset.remove])){
+  testset.xts[,i] <- testset.xts[,i] - testset.fitted[,i]
+}
+
 # Estimate number of lags needed
 testset.nlags <- VARselect(testset.xts, lag.max = 10, type = "const")
 testset.nlags$selection 
 testset.nlags <- as.numeric(testset.nlags$selection[1])
+
+# p-values for tests (+differences)
+testset.pvals_tests <- data.frame(matrix(ncol = 7, nrow = length(colnames(testset.xts))))
+colnames(testset.pvals_tests) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
+rownames(testset.pvals_tests) <- colnames(testset.xts)
+for (i in 1:dim(testset.pvals_tests)[1]) {
+  adf <- adf.test(testset.xts[,i])
+  testset.pvals_tests[i,1] <- adf$p.value
+  # removing first value to get no NA's
+  adf1 <- adf.test(diff(testset.xts[,i], differences = 1)[-1])
+  testset.pvals_tests[i,2] <- adf1$p.value
+  
+  pp <- pp.test(testset.xts[,i])
+  testset.pvals_tests[i,3] <- pp$p.value
+  # removing first value to get no NA's
+  pp1 <- pp.test(diff(testset.xts[,i], differences = 1)[-1])
+  testset.pvals_tests[i,4] <- pp1$p.value
+  
+  kpss <- kpss.test(testset.xts[,i])
+  testset.pvals_tests[i,5] <- kpss$p.value
+  # removing first value to get no NA's
+  kpss2 <- kpss.test(diff(testset.xts[,i], differences = 1)[-1])
+  testset.pvals_tests[i,6] <- kpss2$p.value
+  # removing also second value to get no NA's
+  kpss3 <- kpss.test(diff(testset.xts[,i], differences = 2)[-c(1, 2)])
+  testset.pvals_tests[i,7] <- kpss3$p.value
+}
+
+testset.sign.lvl_adf <- 0.05
+testset.sign.lvl_pp <- 0.05
+testset.sign.lvl_kpss <- 0.05
+testset.stationarity <- data.frame(matrix(ncol = 7, nrow = length(colnames(testset.xts))))
+colnames(testset.stationarity) <- c("ADF", "ADF (1st diff)", "PP", "PP (1st diff)", "KPSS", "KPSS (1st diff)", "KPSS (2nd diff)")
+rownames(testset.stationarity) <- colnames(testset.xts)
+for (i in 1:dim(testset.stationarity)[1]) {
+  if(testset.pvals_tests[i,1] < testset.sign.lvl_adf){
+    testset.stationarity[i,1] <- "stat"
+  } else {
+    testset.stationarity[i,1] <- "non-stat"
+  }
+  if(testset.pvals_tests[i,2] < testset.sign.lvl_adf){
+    testset.stationarity[i,2] <- "stat"
+  } else {
+    testset.stationarity[i,2] <- "non-stat"
+  }
+  if(testset.pvals_tests[i,3] < testset.sign.lvl_pp){
+    testset.stationarity[i,3] <- "stat"
+  } else {
+    testset.stationarity[i,3] <- "non-stat"
+  }
+  if(testset.pvals_tests[i,4] < testset.sign.lvl_pp){
+    testset.stationarity[i,4] <- "stat"
+  } else {
+    testset.stationarity[i,4] <- "non-stat"
+  }
+  if(testset.pvals_tests[i,5] < testset.sign.lvl_kpss){
+    testset.stationarity[i,5] <- "non-stat"
+  } else {
+    testset.stationarity[i,5] <- "stat"
+  }
+  if(testset.pvals_tests[i,6] < testset.sign.lvl_kpss){
+    testset.stationarity[i,6] <- "non-stat"
+  } else {
+    testset.stationarity[i,6] <- "stat"
+  }
+  if(testset.pvals_tests[i,7] < testset.sign.lvl_kpss){
+    testset.stationarity[i,7] <- "non-stat"
+  } else {
+    testset.stationarity[i,7] <- "stat"
+  }
+}
+
+# Differentiate the variables which are still non-stat after 1st diff (KPSS) beforehand
+testset.diff <- c("NG_TTF", "COAL_API2")
+for (i in testset.diff){
+  testset.xts[,i] <- diff(testset.xts[,i], 1)
+  colnames(testset.xts)[colnames(testset.xts) == i] <- paste0(i, ".diff")
+}
+# EM algorithm / Kalman filter for the NA's?
+# But sample is not very small => Remove first row
+testset.xts <- testset.xts[-1,]
 
 # Estimate number of cointegrating vectors
 testset.rank <- rank.test(VECM(testset.xts, include = "none", estim = "ML", lag = testset.nlags-1, LRinclude = "none"), cval = 0.01, type = "eigen")
 testset.rank
 testset.rank <- testset.rank$r
 
+
+# Standardize data
+testset.xts <- scale(testset.xts)
+
+
 # Estimating VECM with cajorls() and specified rank from
-testset.coint <- ca.jo(testset.xts, type = "eigen", ecdet = "none", spec = "transitory", K = testset.nlags, dumvar = NULL)
+testset.coint <- ca.jo(testset.xts, type = "eigen", ecdet = "const", spec = "transitory", K = testset.nlags, dumvar = NULL)
 testset.vecm <- cajorls(testset.coint, r = testset.rank)
 
 # VAR
