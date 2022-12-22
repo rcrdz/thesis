@@ -23,67 +23,78 @@ library(readxl)
 library(ggplot2)
 library(visNetwork)
 library(htmlwidgets)
+# (Maybe) good packages for Causal Discovery in TS-data:
+#library(bsts)
+#library(CausalImpact)
+#library(NlinTS)
 
 
 #source("GrangerTests.R")
 #source("ConditionalGrangerCausality.R")
 
 
-###################
-### Import data ###
-###################
+######################
+### Importing data ###
+######################
+
 #csvdata <- read.csv(file = 'working_db_Trafo4_Daily_Lagged.csv')
 exceldata <- read_excel("working_db_Trafo5_Daily_Lagged.xlsx")
 data_raw <- data.frame(exceldata)
-data_raw$Date <- format(as.POSIXct(data_raw$Date, tz = "UTC"),
+data_raw$Date <- format(as.POSIXct(data_raw$Date, tz = "UTC"), 
                         format = "%Y-%m-%d")
 dim(data_raw)
 head(data_raw)
 
-# Looking at variable names and rename wrongly named Date
+# Explore variable names and rename wrongly named 'Date'
 names(data_raw)
-#names(data_raw)[1] <- 'Date' # Not necessary anymore i guess..
+#names(data_raw)[1] <- 'Date'
+# NOT NECESSARY ANYMORE
 
 
 ##########################
 ### Converting to .xts ###
 ##########################
+
 # Date formats: https://www.ibm.com/docs/en/cmofm/9.0.0?topic=SSEPCD_9.0.0/com.ibm.ondemand.mp.doc/arsa0257.html
 # ?strptime, as.Date(data_raw[,1], "%Y-%m-%d")
 data_raw.xts <- xts(data_raw[,-1], order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
 
 
-#####################
-### Preprocessing ###
-#####################
+#############################################
+### Removing globally redundant variables ###
+#############################################
+
 # Remove Time-variables ('DayofWeek' etc.)
 data.xts <- data_raw.xts[,! names(data_raw.xts) %in% c("DayofWeek", "Is_Weekday", "Seasons", "Holiday", "Year")]
 # Remove 'ShareOf's'
 data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("shareOf", names(data.xts))])]
-# Remove 'Clean prices': combination of "raw prices" and EUA price (Coal and NG)
-data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("CleanPrice", names(data.xts))])]
-# Remove 'renewables_forecast_error': 'renewables_forecast_error' = sum('biomass_production',...)-sum('gen_forecast_solar',...)
+# Remove 'renewables_forecast_error': 'renewables_forecast_error' = sum('biomass_production', ...)-sum('gen_forecast_solar', ...)
 data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("renewables_forecast_error", names(data.xts))])]
-# Remove 'Total_production' b/c of redundancy
+# Remove 'Total_production': 'Total_production' = sum('gas_production', ...)
 data.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("Total_production", names(data.xts))])]
+
+
 # Important variables: 'forecast_residual_load', 'COAL_API2', 'NG_TTF', 'EUA_price'
+# # # ## # ## # ## # ## # # #
 
 
-##############################
-### Converting to .ts-data ###
-##############################
+#########################
+### Converting to .ts ###
+#########################
+
 # Converting Date from character representation to class 'Date'
 #data_conv <- data_raw
 #data_conv %<>%
 #  mutate(Date = as.Date(Date, format= "%d.%m.%y"))
 # Converting to .ts-data # yearly seasonality
 #data.ts <- ts(data_conv, start = c(as.numeric(format(data_conv$Date[1], "%Y")), as.numeric(format(data_conv$Date[1], "%j"))), frequency = 365)
-data.ts <-ts_ts(data.xts)
+data.ts <- ts_ts(data.xts)
 
 
-################
-### Plotting ###
-################
+######################
+### Standard Plots ###
+######################
+
 # A few plots..
 # Plotting: https://rpubs.com/odenipinedo/visualizing-time-series-data-in-R
 # Example: DK_2_P_spread_to_DE
@@ -99,38 +110,41 @@ plot(data.xts$actual_load, main = "Actual load + Forecast load")
 lines(data.xts$forecast_load, col = "red")
 
 # Example: Plot with Legend
-plot(data.xts[,4:6], main = "Forecast Solar, Wind On- and Offshore Generation", col = c("black", "tomato", "blue"))
+plot(data.xts[,c("gen_forecast_Solar", "gen_forecast_wind_Offshore", "gen_forecast_wind_Onshore")], main = "Forecast Solar, Wind On- and Offshore Generation", col = c("black", "tomato", "blue"))
 addLegend(legend.loc = "topleft",
           legend.names = c(names(data.xts)[4], names(data.xts)[5], names(data.xts)[6]),
           #col = c("black", "tomato", "blue"),
           lty=1, lwd=1)
 
 # Netherlands export, import
-plot(data.xts[,60:61], main = "Netherlands export, import")
+plot(data.xts[,c("Netherlands_import", "Netherlands_export")], main = "Netherlands export, import")
 addLegend(legend.loc = "topleft",
           legend.names = c(names(data.xts$Netherlands_export), names(data.xts$Netherlands_import)),
           lty=1, lwd=1)
-
-# Plot of Power productions
-plot(data.xts[,27:35], main = "Power production from different sources")
 
 
 ########################
 ### Data Exploration ###
 ########################
+
+# Box-Plot of all variables
 stack(as.data.frame(data.xts)) %>% ggplot(aes(x = ind, y = values, fill = ind)) +
   geom_boxplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
   xlab('Variables') +
   ylab('Values')
 
-### Variables 'starting later' ###
+
+# -------------------------- 
+# Variables 'starting later' 
+# -------------------------- 
+
 # Example: physical_net_export
 plot(data.xts$physical_net_export)
 time_index <- min(which((data.xts$physical_net_export != 0) == TRUE))
 addEventLines(events = xts(x = 'first nonzero', order.by = time(data.xts$physical_net_export)[time_index]), lty = 2, col = 'tomato', lwd = 1.5)
 
-# List: When is first nonzero entry
+# Determine first 'non-zero'-entry
 first_nonzero <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
 colnames(first_nonzero) <- "First nonzero index"
 rownames(first_nonzero) <- colnames(data.xts)
@@ -142,7 +156,10 @@ for (i in 1:dim(first_nonzero)[1]) {
 cat("--------------------------", "VARIABLES 'STARTING LATER'", "--------------------------", rownames(first_nonzero)[first_nonzero$`First nonzero index` >2], "--------------------------", paste("total:", sum(first_nonzero > 2), "/", dim(data.xts)[2]), sep='\n')
 
 
-### Positive / Negative Variables ###
+# -----------------------------
+# Positive / Negative Variables
+# -----------------------------
+
 # Positive variables
 strictly_positives.xts <- xts(order.by=index(data.xts))
 for (i in 1:dim(data.xts)[2]){
@@ -161,7 +178,10 @@ negatives.xts <- data.xts[,! names(data.xts) %in% names(non_negatives.xts)]
 cat("-----------------------------------------", "VARIABLES WITH NEGATIVE AND POSITIVE VALS", "-----------------------------------------", names(negatives.xts), "-----------------------------------------", paste("total:", dim(negatives.xts)[2], "/", dim(data.xts)[2]), sep='\n')
 
 
-### Zero-inflated data ###
+# ------------------
+# Zero-inflated data
+# ------------------
+
 zeros_count <- data.frame(matrix(ncol = 1, nrow = dim(data.xts)[2]))
 rownames(zeros_count) <- colnames(data.xts)
 colnames(zeros_count) <- "# of Zeros"
@@ -169,41 +189,41 @@ for (i in 1:dim(zeros_count)[1]) {
   #zeros_count[1,i] <- sum(data.xts[,i]==0)
   zeros_count[i,1] <- sum(data.xts[first_nonzero[i,]:dim(data.xts)[1],i]==0)
 }
-# Histograms of variables which contain at least 1 zero (removed zeros before "start")
+# Histograms of variables which contain at least one zero (removed zeros before "start")
 for (i in 1:dim(subset(zeros_count, `# of Zeros` != 0))[1]) {
   hist(data.xts[first_nonzero[rownames(subset(zeros_count, `# of Zeros` != 0))[i],]:dim(data.xts)[1], rownames(subset(zeros_count, `# of Zeros` != 0))[i]], xlab = rownames(subset(zeros_count, `# of Zeros` != 0))[i], main = paste("Histogram of ", rownames(subset(zeros_count, `# of Zeros` != 0))[i]), probability = TRUE)
 }
 
+# >30 zeros as threshold for zero-inflation:
 # Zero-inflated variables
 zero_infl_vars.xts <- data.xts[,rownames(subset(zeros_count, `# of Zeros` > 30))]
-cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", names(zero_infl_vars.xts), "-----------------------", paste("total:", dim(zero_infl_vars.xts)[2], "/", dim(data.xts)[2]), sep='\n')
-
 # Histograms zero-inflated variables (removed zeros before "start")
 for (i in 1:dim(zero_infl_vars.xts)[2]) {
   hist(data.xts[first_nonzero[names(zero_infl_vars.xts)[i],]:dim(data.xts)[1], names(zero_infl_vars.xts)[i]], xlab = names(zero_infl_vars.xts)[i], main = paste("Histogram of ", names(zero_infl_vars.xts)[i]), probability = TRUE)
 }
 # Which ones seem not zero-inflated?
-# No count-data: DK_1_P_spread_to_DE, DK_2_P_spread_to_DE, France_P_spread_to_DE, 
-#                Netherlands_P_spread_to_DE, Slovenia_P_spread_to_DE, Czech_P_spread_to_DE,
-#                Austria_P_spread_to_DE, Belgium_P_spread_to_DE, physical_net_export
+#         IS THERE ALSO A TEST FOR ZERO-INFLATION?
+# No count-data / Varibales which also have negative values:
 zero_infl_vars.remove <- c("DK_1_P_spread_to_DE", "DK_2_P_spread_to_DE", "France_P_spread_to_DE",
                            "Netherlands_P_spread_to_DE", "Slovenia_P_spread_to_DE", "Czech_P_spread_to_DE",
                            "Austria_P_spread_to_DE", "Belgium_P_spread_to_DE", "physical_net_export")
 zero_infl_vars.xts <- zero_infl_vars.xts[,! names(zero_infl_vars.xts) %in% zero_infl_vars.remove]
+cat("-----------------------", "ZERO-INFLATED VARIABLES", "-----------------------", names(zero_infl_vars.xts), "-----------------------", paste("total:", dim(zero_infl_vars.xts)[2], "/", dim(data.xts)[2]), sep='\n')
 
-# Non-Zero-inflated variables
+# Non-zero-inflated variables
 non_zero_infl_vars.xts <- data.xts[,! names(data.xts) %in% names(zero_infl_vars.xts)]
 cat("---------------------------", "NOT-ZERO-INFLATED VARIABLES", "---------------------------", names(non_zero_infl_vars.xts), "---------------------------", paste("total:", dim(non_zero_infl_vars.xts)[2], "/", dim(data.xts)[2]), sep='\n')
-
-
 # Histograms "non-zero-inflated" variables (removed zeros before "start")
 for (i in 1:dim(non_zero_infl_vars.xts)[2]) {
   hist(data.xts[first_nonzero[names(non_zero_infl_vars.xts)[i],]:dim(data.xts)[1], names(non_zero_infl_vars.xts)[i]], xlab = names(non_zero_infl_vars.xts)[i], main = paste("Histogram of ", names(non_zero_infl_vars.xts)[i]), probability = TRUE)
 }
 
 
-### Covariance and Correlation matrices ###
-# Correlation matrix (without lags)
+# -----------------------------------
+# Covariance and Correlation matrices
+# -----------------------------------
+
+# Correlation matrix (w/o lags)
 cor_threshold <- 0.85
 
 cor_matrix <- cor(data.xts)
@@ -217,8 +237,7 @@ rownames(high_cor) <- c()
 cat("---------------------", "Top 5 corr (w/o lags)", "---------------------", sep='\n')
 print(high_cor[1:5,])
 
-
-# Covariance + correlation matrix (with lags)
+# Covariance + correlation matrix (w/ lags)
 nl <- 2 # number of lags
 data_with_lags <- embed(as.matrix(data.xts), nl+1) #produce a matrix with M columns containing the original series and lagged versions of it
 ndfs <- paste(rep(colnames(data.xts),nl), "[t-", rep(1:nl, each=ncol(data.xts)), "]", sep = "")
@@ -240,18 +259,18 @@ print(high_cor_with_lags[1:5,])
 #unique(as.vector(as.matrix(high_cor_with_lags[,1:2])))
 
 
-# QQ-plots (Example: DA_Price_DE)
-qqnorm(data.xts$DA_Price_DE, main='Normal')
-qqline(rnorm(dim(data.xts)[1]))
-qqPlot(data.xts$DA_Price_DE)
-
-
+# ---------------
 # Normality tests
-# Shapiro-Wilk-Test
+# ---------------
+
+# (I) Shapiro-Wilk-Test
 # H_0: Variable is normally distributed
 # p-value not >0.05 -> significantly different from normal distribution
-# Jarque-Bera test
-# H_O: normality
+# (II) Jarque-Bera test
+# H_O: Normality
+# Not used: (III) Kolmogorov-Smirnov-Test
+# H_0: Normality
+# ks.test(as.numeric(data.xts[,76]), "pnorm") 
 
 pvals_normality <- data.frame(matrix(ncol = 2, nrow = dim(data.xts)[2]))
 colnames(pvals_normality) <- c("pvals Shapiro-Wilk", "pvals Jarque-Bera")
@@ -262,14 +281,13 @@ for (i in 1:dim(pvals_normality)[1]) {
   s <- jarque.bera.test(as.numeric(data.xts[,i]))
   pvals_normality[i,2] <- s$p.value
 }
-# none of the variables is Gaussian (Shapiro-Wilk)
+# None of the variables is Gaussian (Shapiro-Wilk):
 row.names(pvals_normality)[which(pvals_normality[,1]>0.05)]
 # variable with highest p-value and its histogram (Shapiro-Wilk)
 rownames(pvals_normality)[which.max(pvals_normality[,1])]
 hist(data.xts$Poland_export, xlab = "Poland_export", main = paste("Histogram of Poland_export"), probability = TRUE)
-# alternative: ks.test(as.numeric(data.xts[,76]), "pnorm") (Kolmogorov-Smirnov-Test)
 
-# Are the positive variables Gaussian after applying log-transform?
+# Are the strictly positives Gaussian after applying log-transform?
 pvals_shapiro_log <- data.frame(matrix(ncol = 1, nrow = dim(strictly_positives.xts)[2]))
 colnames(pvals_shapiro_log) <- "p-values of Shapiro-Wilk-Test"
 rownames(pvals_shapiro_log) <- colnames(strictly_positives.xts)
@@ -277,32 +295,45 @@ for (i in 1:dim(pvals_shapiro_log)[1]) {
   t <- shapiro.test(log(as.numeric(strictly_positives.xts[,i])))
   pvals_shapiro_log[i,1] <- t$p.value
 }
-# changes not that much..
+# Still none of the variables Gaussian:
 row.names(pvals_shapiro_log)[which(pvals_shapiro_log[,1]>0.05)]
 
 
+# ------------------
 # Standardizing data
-# histogram of non-standardized data (Example: Poland_export)
-hist(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]], xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of ", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
-# histogram of standardized data (Example: Poland_export)
-standardized <- scale(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]])
-hist(standardized, xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of ", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
-qqnorm(standardized, main=colnames(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]]))
-qqline(rnorm(dim(data.xts)[1]))
+# ------------------
+
+# Histogram of non-standardized data
+# Example: Poland_export (b/c highest p-value)
+Poland_export <- data.xts$Poland_export
+hist(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]], xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
+qqnorm(Poland_export, main=colnames(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]]))
+qqline(rnorm(dim(data.xts)[1]), col = "red")
+# Standardized
+Poland_export.std <- scale(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]])
+hist(Poland_export.std, xlab = rownames(pvals_normality)[which.max(pvals_normality[,1])], main = paste("Histogram of", rownames(pvals_normality)[which.max(pvals_normality[,1])]), probability = TRUE)
+qqnorm(Poland_export.std, main=colnames(data.xts[,rownames(pvals_normality)[which.max(pvals_normality[,1])]]))
+qqline(rnorm(dim(data.xts)[1]), col = "red")
 
 
 ###################
 ### Seasonality ###
 ###################
-# Test for Seasonality (not so sure about this..)
-seasonality <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
-colnames(seasonality) <- "Seasonal"
-rownames(seasonality) <- colnames(data.xts)
-for (i in 1:dim(seasonality)[1]) {
-  seasonality[i,1] <- isSeasonal(data.xts[,i], test = "combined")
+
+# --------------------------------
+# Test for Seasonality [UNCERTAIN]
+# --------------------------------
+pvals_seasonality <- data.frame(matrix(ncol = 1, nrow = length(colnames(data.xts))))
+colnames(pvals_seasonality) <- "Seasonal"
+rownames(pvals_seasonality) <- colnames(data.xts)
+for (i in 1:dim(pvals_seasonality)[1]) {
+  pvals_seasonality[i,1] <- isSeasonal(data.xts[,i], test = "combined")
 }
 
-# Decomposition with decompose()
+# ---------------------------------------------
+# Decomposition with decompose() + seasonplot()
+# ---------------------------------------------
+
 # frequency = 365 means: 365 obs. until season repeats (yearly seasonality)
 # Example: forecast_residual_load
 plot(data.xts$lignite_production)
@@ -312,33 +343,35 @@ plot(decomp_actual_load)
 actual_load_SeasonAdj <- ts(data.xts$actual_load, frequency = 365.25) - decomp_actual_load$seasonal
 plot(actual_load_SeasonAdj, main = paste("Deseasonalized", colnames(data.xts$actual_load)))
 
-#stlm <- stl(ts(data_raw$actual_load, frequency = 365.25), s.window = "periodic")
-#plot(stlm)
-
+# Alternative: seasonplot:
 seasonplot(ts(data_raw$actual_load, frequency = 365.25))
 
 
-# Estimating seasonality-components with Fourier (Energy paper)
+# -----------------------------------
+# Estimating Seasonality with Fourier
+# -----------------------------------
+
 #t <- seq(from = 1, to = dim(data.xts)[1], by = 1)
-data.lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[first_nonzero[x,1]:dim(data.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + cos(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + sin(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25) 
-                                                    + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[x,1]+1, by = 1)/365.25)))
-fitted_vals <- sapply(data.lms, fitted)
+# Estimating seasonality components 
+data.lms <- lapply(1:dim(data.xts)[2], function(x) lm(data.xts[first_nonzero[names(data.xts)[x],1]:dim(data.xts)[1],x] ~ sin(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[names(data.xts)[x],1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[names(data.xts)[x],1]+1, by = 1)/365.25) 
+                                                    + sin(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[names(data.xts)[x],1]+1, by = 1)/365.25) 
+                                                    + cos(2*pi*2*seq(from = 1, to = dim(data.xts)[1]-first_nonzero[names(data.xts)[x],1]+1, by = 1)/365.25)))
+data.fitted <- sapply(data.lms, fitted)
 for(i in 1:dim(data.xts)[2]){
-  if (length(fitted_vals[[i]]) < dim(data.xts)[1]){
-    fitted_vals[[i]] <- c(rep(0, first_nonzero[i,1]-1), fitted_vals[[i]])
+  if (length(data.fitted[[i]]) < dim(data.xts)[1]){
+    data.fitted[[i]] <- c(rep(0, first_nonzero[names(data.xts)[i],1]-1), data.fitted[[i]])
   }
 }
-fitted_vals <- data.frame(fitted_vals)
-colnames(fitted_vals) <- colnames(data.xts)
-fitted_vals <- xts(fitted_vals, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
+data.fitted <- data.frame(data.fitted)
+colnames(data.fitted) <- colnames(data.xts)
+data.fitted <- xts(data.fitted, order.by = as.Date(data_raw[,1], "%Y-%m-%d"))
 
 
 for(i in 1:dim(data.xts)[2]) {  
   abc <- ggplot() + 
     geom_line(data = data.xts, aes(x = time(data.xts), y = as.numeric(data.xts[,i])), color = "black") +
-    geom_line(data = fitted_vals, aes(x = time(data.xts), y = as.numeric(fitted_vals[,i])), color = "red") +
+    geom_line(data = data.fitted, aes(x = time(data.xts), y = as.numeric(data.fitted[,i])), color = "red") +
     xlab('Date') +
     ylab(colnames(data.xts)[i]) +
     theme(axis.text.x=element_text(angle=60, hjust=1))
@@ -346,14 +379,15 @@ for(i in 1:dim(data.xts)[2]) {
   #Sys.sleep(2)
 }
 
-seasonadj.xts <- data.xts - fitted_vals
+# FROM WHICH ONES SHOULD WE REALLY SUBTRACT THE ESTIMATED SEASONAL COMPONENT?
+seasonadj.xts <- data.xts - data.fitted
 
 
 ####################
 ### Stationarity ###
 ####################
 
-# Checking Stationarity. Example: "DA_Price_DE"
+# Example: "DA_Price_DE" ACF plot
 #plot.new()
 #frame()
 #par(mfcol=c(2,2))
@@ -366,20 +400,30 @@ plot(data.xts$DA_Price_DE,
 acf(data.xts$DA_Price_DE,lag.max = length(data.xts$DA_Price_DE),
     xlab = "lag #", ylab = 'ACF', main=' ')
 
+
+# -------------------------------
 # Ljung-Box test for independence
+# -------------------------------
+
 # H_0: Independence in a given time series 
 # (a non-stationary signal will have a low p-value)
 Box.test(data.xts$DA_Price_DE, lag=25, type="Ljung-Box")
 
 
-# ACF- and PACF-plots of all variables
-# could include max.lag	= xx
+# ------------
+# ACF and PACF
+# ------------
+
+# Further specifications: max.lag	= xx
 for (i in 1:dim(data.xts)[2]) {
   acf2(data.xts[,i], main = paste("ACF and PACF of ", colnames(data.xts)[i]))
 }
 
 
-### Stationarity Tests ###
+# ------------------
+# Stationarity Tests
+# ------------------
+
 # https://stats.stackexchange.com/questions/88407/adf-test-pp-test-kpss-test-which-test-to-prefer
 # Unit root tests: ADF, PP
 # H_0: Unit root (equivalently, x is a non-stationary time series)
@@ -434,9 +478,10 @@ for (i in 1:dim(pvals_tests)[1]) {
   pvals_tests[i,8] <- kpss4$p.value
 }
 
-# applying the Zivot and Andrews test
+# Zivot and Andrews test
 za.tests <- lapply(1:dim(data.xts)[2], function(x) ur.za(data.xts[,x]))
-# plot of all variables with their potential structural breaks
+
+# Plot of all variables with their potential structural breaks
 for(i in 1:dim(data.xts)[2]) {  
   pl <- ggplot() + 
     geom_line(data = data.xts, aes(x = time(data.xts), y = as.numeric(data.xts[,i])), color = "black") +
@@ -446,6 +491,7 @@ for(i in 1:dim(data.xts)[2]) {
   print(pl)
 }
 
+# Matrix for stationarity: stat vs non-stat
 sign.lvl.pp <- 0.05
 sign.lvl.adf <- 0.05
 sign.lvl.kpss <- 0.05
@@ -515,7 +561,17 @@ cat("-----------------------------", "ADF == PP == KPSS == non-stat", "---------
 # https://stats.stackexchange.com/questions/225087/seasonal-data-deemed-stationary-by-adf-and-kpss-tests
 
 
-### Long version of structural-break control ###
+#
+# =/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=
+# =/=/=/=/=/=/=/=/=/=/=/= BREAK =/=/=/=/=/=/=/=/=/=/=/=/=/=
+# =/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=
+#
+
+
+# --------------------------------------
+# Long version of structural-break check
+# --------------------------------------
+
 # Inspecting the variables where adf.test and pp.test differ in their outcomes
 # Luxembourg_export has a structural break @ 2017-06-28
 # This is, because data starts @ 2017-06-28
@@ -626,10 +682,12 @@ plot(diff(data.xts$Netherlands_export, differences = ndiffs(data.xts$Netherlands
 hist(data.xts$Netherlands_export, main = "TITLE", probability = TRUE) #not stationary
 hist(diff(data.xts$Netherlands_export, differences = ndiffs(data.xts[,60])), main = "TITLE", probability = TRUE)
 
-# (Maybe) good packages for causal discovery for TS-data:
-#library(bsts)
-library(CausalImpact)
-library(NlinTS)
+
+#
+# =/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=
+# =/=/=/=/=/=/=/=/=/=/=/= BREAK END =/=/=/=/=/=/=/=/=/=/=/=
+# =/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=
+#
 
 
 ###############################################################
@@ -638,13 +696,14 @@ library(NlinTS)
 # When VAR when VECM
 # https://www.researchgate.net/post/Is-it-necessary-for-variables-to-be-integrated-of-order-1-to-applying-VAR-model-or-I-can-use-it-if-variables-are-integrated-of-any-order
 
-# ---------------- #
-# Complete dataset #
-# ---------------- #
+# ----------------------
+# 1st "complete" dataset
+# ----------------------
 # COAL AND NG: EUA_price AND NG_TTF/COAL_API2
-complete.xts <- data.xts
+# Remove 'Clean prices': combination of "raw prices" and EUA price (Coal and NG)
+complete.xts <- data.xts[,! names(data.xts) %in% names(data.xts[,grep("CleanPrice", names(data.xts))])]
 
-# plot data
+# Plot data
 for(i in 1:dim(complete.xts)[2]) {  
   abc <- ggplot() + 
     geom_line(data = complete.xts, aes(x = time(data.xts), y = as.numeric(complete.xts[,i])), color = "black") +
@@ -921,9 +980,9 @@ visNetwork(test.visn$nodes, test.visn$edges)
 
 
 
-# -------------------- #
-# 2nd Complete dataset #
-# -------------------- #
+# ----------------------
+# 2nd "complete" dataset
+# ----------------------
 # COAL AND NG: CLEAN PRICES 
 complete2.xts <- data_raw.xts[,! names(data_raw.xts) %in% c("DayofWeek", "Is_Weekday", "Seasons", "Holiday", "Year")]
 complete2.xts <- complete2.xts[,! names(complete2.xts) %in% names(complete2.xts[,grep("shareOf", names(complete2.xts))])]
@@ -1175,9 +1234,9 @@ visIgraph(complete2.std.graph.B_0)
 
 
 
-# ----------------------------------------- #
-# Dataset without variables "starting later #
-# ----------------------------------------- #
+# -------------------------------------
+# Dataset w/o variables "starting later
+# -------------------------------------
 same_start.xts <- complete.xts[, ! names(complete.xts) %in% rownames(first_nonzero)[first_nonzero$`First nonzero index` >2]]
 same_start.xts <- scale(same_start.xts)
 
